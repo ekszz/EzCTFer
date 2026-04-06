@@ -1,0 +1,33 @@
+{
+  "mcpServers": {
+    "ida_pro_mcp": {
+      "transport": "stdio",
+      "command": "ida-pro-mcp",
+      "args": [
+        "--ida-rpc",
+        "http://127.0.0.1:13337"
+      ]
+    },
+    "jadx_mcp": {
+      "transport": "stdio",
+      "command": "uv",
+      "args": [
+        "--directory",
+        "path/to/jadx-mcp-server/",
+        "run",
+        "jadx_mcp_server.py"
+      ]
+    },
+    "idalib_mcp": {
+      "transport": "sse",
+      "url": "http://localhost:8845/sse",
+      "timeout": 60,
+      "sse_read_timeout": 300,
+      "max_retries": 3,
+      "retry_delay": 2,
+      "headers": {
+        "Authorization": "Bearer your-token-here"
+      }
+    }
+  }
+}

@@ -1,0 +1,3225 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM Monitor - 实时监控</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            /* 现代系统字体栈 - 跨平台友好 */
+            --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", 
+                         "Segoe UI Variable", "Segoe UI", system-ui, ui-sans-serif, 
+                         "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC",
+                         Roboto, "Helvetica Neue", Arial, sans-serif;
+            /* 代码字体栈 */
+            --font-mono: "JetBrains Mono", "Fira Code", "SF Mono", "Cascadia Code",
+                         "Noto Sans Mono", Consolas, Monaco, "Courier New", monospace;
+            /* 毛玻璃效果变量 */
+            --glass-bg: rgba(255, 255, 255, 0.7);
+            --glass-bg-dark: rgba(255, 255, 255, 0.5);
+            --glass-border: rgba(255, 255, 255, 0.3);
+            --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            --glass-blur: blur(12px);
+            --glass-blur-light: blur(8px);
+            /* 亮色主题颜色 */
+            --bg-gradient-1: #e8f5e9;
+            --bg-gradient-2: #f5f7fa;
+            --bg-gradient-3: #fff8e1;
+            --text-primary: #333;
+            --text-secondary: #666;
+            --text-muted: #888;
+            --text-light: #999;
+            --sidebar-bg: rgba(255, 255, 255, 0.7);
+            --sidebar-header-bg: rgba(255, 255, 255, 0.6);
+            --round-item-bg: rgba(250, 250, 250, 0.7);
+            --round-item-hover-bg: rgba(232, 245, 233, 0.85);
+            --round-item-active-bg: rgba(232, 245, 233, 0.9);
+            --message-content-bg: rgba(255, 255, 255, 0.8);
+            --message-user-bg: rgba(232, 245, 233, 0.85);
+            --message-tool-bg: rgba(255, 243, 224, 0.85);
+            --thinking-block-bg: rgba(240, 244, 248, 0.8);
+            --tool-call-bg: rgba(255, 248, 225, 0.85);
+            --tool-header-bg: rgba(255, 248, 225, 0.6);
+            --tool-header-hover-bg: rgba(255, 236, 179, 0.9);
+            --tool-args-bg: rgba(245, 245, 245, 0.8);
+            --tool-result-bg: rgba(255, 255, 255, 0.7);
+            --input-bg: rgba(255, 255, 255, 0.8);
+            --input-focus-bg: rgba(255, 255, 255, 0.95);
+            --code-bg: rgba(232, 245, 233, 0.9);
+            --code-block-bg: rgba(245, 245, 245, 0.9);
+            --scrollbar-track: #f0f0f0;
+            --scrollbar-thumb: #c1c1c1;
+            --scrollbar-hover: #4caf50;
+            --major-finding-btn-bg: rgba(255, 243, 224, 0.8);
+            --major-finding-btn-hover-bg: rgba(255, 224, 178, 0.9);
+            --major-finding-btn-active-bg: rgba(255, 204, 128, 0.9);
+            --finding-card-bg: rgba(255, 255, 255, 0.85);
+            --summary-content-bg: rgba(255, 255, 255, 0.8);
+            --chat-header-bg: rgba(255, 255, 255, 0.8);
+            --user-input-bg: rgba(255, 255, 255, 0.85);
+            --status-indicator-bg: rgba(255, 255, 255, 0.85);
+            --panel-filter: saturate(180%) blur(24px);
+            --panel-glass-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.34) 0%, rgba(255, 255, 255, 0.1) 100%);
+            --panel-glass-footer-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.3) 0%, rgba(255, 255, 255, 0.08) 100%);
+            --panel-glass-border: rgba(255, 255, 255, 0.24);
+            --panel-glass-border-soft: rgba(255, 255, 255, 0.18);
+            --panel-glass-highlight: rgba(255, 255, 255, 0.28);
+            --panel-glass-shadow: 0 20px 44px rgba(43, 66, 89, 0.14);
+            --panel-ambient-top: rgba(255, 255, 255, 0.42);
+            --panel-ambient-right: rgba(129, 212, 250, 0.18);
+            --panel-ambient-bottom: rgba(165, 214, 167, 0.18);
+            --sidebar-panel-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.34) 0%, rgba(255, 255, 255, 0.14) 100%);
+            --sidebar-section-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.56) 0%, rgba(255, 255, 255, 0.34) 100%);
+            --sidebar-card-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.52) 0%, rgba(255, 255, 255, 0.28) 100%);
+            --sidebar-card-hover-bg: linear-gradient(180deg, rgba(236, 248, 238, 0.7) 0%, rgba(226, 242, 230, 0.4) 100%);
+            --sidebar-card-active-bg: linear-gradient(180deg, rgba(232, 245, 233, 0.78) 0%, rgba(220, 237, 224, 0.5) 100%);
+            --sidebar-card-shadow: 0 14px 28px rgba(43, 66, 89, 0.12);
+            --sidebar-control-border: rgba(148, 163, 184, 0.34);
+            --sidebar-control-hover-border: rgba(76, 175, 80, 0.3);
+            --sidebar-control-active-border: rgba(76, 175, 80, 0.46);
+            --sidebar-control-highlight: rgba(255, 255, 255, 0.52);
+            --panel-seam-glow: rgba(255, 255, 255, 0.22);
+            --workspace-shell-bg: rgba(255, 255, 255, 0.1);
+            --workspace-shell-border: rgba(255, 255, 255, 0.22);
+            --workspace-shell-shadow: 0 24px 60px rgba(43, 66, 89, 0.12);
+            --layout-sidebar-bg: rgba(236, 241, 246, 0.99);
+            --layout-sidebar-border: rgba(148, 163, 184, 0.68);
+            --layout-sidebar-shadow: 0 20px 42px rgba(43, 66, 89, 0.22);
+            --layout-main-bg: rgba(255, 255, 255, 0.48);
+            --layout-main-border: rgba(148, 163, 184, 0.34);
+            --light-widget-surface-gradient: linear-gradient(135deg, rgba(242, 248, 244, 0.94) 0%, rgba(236, 244, 240, 0.90) 100%);
+            --light-widget-surface-strong: linear-gradient(135deg, rgba(236, 244, 240, 0.96) 0%, rgba(230, 240, 236, 0.92) 100%);
+            --light-widget-outline: rgba(46, 125, 50, 0.24);
+            --light-chat-card-bg: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(248, 251, 249, 0.91) 100%);
+            --light-chat-user-bg: linear-gradient(135deg, rgba(240, 246, 242, 0.96) 0%, rgba(232, 242, 238, 0.93) 100%);
+            --light-chat-tool-bg: linear-gradient(135deg, rgba(252, 250, 245, 0.96) 0%, rgba(248, 246, 242, 0.93) 100%);
+            --light-chat-thinking-bg: linear-gradient(135deg, rgba(244, 248, 246, 0.93) 0%, rgba(238, 244, 242, 0.89) 100%);
+            --light-chat-toolcall-bg: linear-gradient(135deg, rgba(253, 251, 244, 0.95) 0%, rgba(250, 248, 242, 0.91) 100%);
+            --light-chat-subpanel-bg: linear-gradient(135deg, rgba(255, 255, 255, 0.90) 0%, rgba(250, 251, 250, 0.86) 100%);
+            --light-chat-summary-bg: linear-gradient(135deg, rgba(255, 255, 255, 0.96) 0%, rgba(248, 251, 249, 0.92) 100%);
+        }
+
+        /* 暗黑主题 - 统一深灰色调 + 毛玻璃效果 */
+        [data-theme="dark"] {
+            /* 深色渐变背景 */
+            --bg-gradient-1: #0d0d0d;
+            --bg-gradient-2: #1a1a1a;
+            --bg-gradient-3: #0f0f0f;
+            /* 文字颜色 - 高对比度 */
+            --text-primary: #f0f0f0;
+            --text-secondary: #c0c0c0;
+            --text-muted: #909090;
+            --text-light: #808080;
+            /* 毛玻璃效果 - 暗色优化 */
+            --glass-bg: rgba(25, 25, 25, 0.75);
+            --glass-bg-dark: rgba(20, 20, 20, 0.6);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+            /* 侧边栏 */
+            --sidebar-bg: rgba(28, 28, 28, 0.85);
+            --sidebar-header-bg: rgba(35, 35, 35, 0.9);
+            /* 轮次列表项 */
+            --round-item-bg: rgba(40, 40, 40, 0.6);
+            --round-item-hover-bg: rgba(50, 55, 50, 0.8);
+            --round-item-active-bg: rgba(45, 65, 45, 0.85);
+            /* 消息内容 */
+            --message-content-bg: rgba(38, 38, 38, 0.85);
+            --message-user-bg: rgba(35, 50, 40, 0.85);
+            --message-tool-bg: rgba(50, 45, 35, 0.85);
+            /* 思考块和工具调用 */
+            --thinking-block-bg: rgba(35, 40, 45, 0.8);
+            --tool-call-bg: rgba(45, 42, 35, 0.85);
+            --tool-header-bg: rgba(55, 50, 40, 0.7);
+            --tool-header-hover-bg: rgba(65, 58, 40, 0.9);
+            --tool-args-bg: rgba(30, 30, 30, 0.9);
+            --tool-result-bg: rgba(35, 35, 35, 0.8);
+            /* 输入区域 */
+            --input-bg: rgba(35, 35, 35, 0.85);
+            --input-focus-bg: rgba(45, 45, 45, 0.95);
+            /* 代码块 */
+            --code-bg: rgba(35, 50, 40, 0.9);
+            --code-block-bg: rgba(28, 28, 28, 0.95);
+            /* 滚动条 */
+            --scrollbar-track: #1a1a1a;
+            --scrollbar-thumb: #404040;
+            --scrollbar-hover: #66bb6a;
+            /* 重大发现按钮 */
+            --major-finding-btn-bg: rgba(50, 45, 35, 0.8);
+            --major-finding-btn-hover-bg: rgba(60, 55, 40, 0.9);
+            --major-finding-btn-active-bg: rgba(70, 60, 35, 0.95);
+            /* 其他组件 */
+            --finding-card-bg: rgba(38, 38, 38, 0.9);
+            --summary-content-bg: rgba(35, 35, 35, 0.9);
+            --chat-header-bg: rgba(30, 30, 30, 0.9);
+            --user-input-bg: rgba(30, 30, 30, 0.9);
+            --status-indicator-bg: rgba(40, 40, 40, 0.9);
+            --panel-filter: saturate(145%) blur(24px);
+            --panel-glass-bg: linear-gradient(180deg, rgba(34, 34, 34, 0.46) 0%, rgba(18, 18, 18, 0.18) 100%);
+            --panel-glass-footer-bg: linear-gradient(180deg, rgba(30, 30, 30, 0.5) 0%, rgba(16, 16, 16, 0.2) 100%);
+            --panel-glass-border: rgba(255, 255, 255, 0.08);
+            --panel-glass-border-soft: rgba(255, 255, 255, 0.05);
+            --panel-glass-highlight: rgba(255, 255, 255, 0.08);
+            --panel-glass-shadow: 0 22px 50px rgba(0, 0, 0, 0.42);
+            --panel-ambient-top: rgba(255, 255, 255, 0.08);
+            --panel-ambient-right: rgba(100, 181, 246, 0.1);
+            --panel-ambient-bottom: rgba(102, 187, 106, 0.08);
+            --sidebar-panel-bg: linear-gradient(180deg, rgba(34, 34, 34, 0.5) 0%, rgba(18, 18, 18, 0.26) 100%);
+            --sidebar-section-bg: linear-gradient(180deg, rgba(42, 42, 42, 0.46) 0%, rgba(20, 20, 20, 0.22) 100%);
+            --sidebar-card-bg: linear-gradient(180deg, rgba(48, 48, 48, 0.44) 0%, rgba(24, 24, 24, 0.18) 100%);
+            --sidebar-card-hover-bg: linear-gradient(180deg, rgba(58, 68, 58, 0.56) 0%, rgba(30, 38, 30, 0.26) 100%);
+            --sidebar-card-active-bg: linear-gradient(180deg, rgba(52, 78, 56, 0.68) 0%, rgba(24, 38, 26, 0.32) 100%);
+            --sidebar-card-shadow: 0 18px 36px rgba(0, 0, 0, 0.28);
+            --sidebar-control-border: rgba(255, 255, 255, 0.08);
+            --sidebar-control-hover-border: rgba(102, 187, 106, 0.26);
+            --sidebar-control-active-border: rgba(102, 187, 106, 0.4);
+            --sidebar-control-highlight: rgba(255, 255, 255, 0.08);
+            --panel-seam-glow: rgba(255, 255, 255, 0.06);
+            --workspace-shell-bg: rgba(24, 24, 24, 0.16);
+            --workspace-shell-border: rgba(255, 255, 255, 0.08);
+            --workspace-shell-shadow: 0 28px 68px rgba(0, 0, 0, 0.3);
+            --layout-sidebar-bg: rgba(12, 12, 12, 0.08);
+            --layout-sidebar-border: rgba(255, 255, 255, 0.04);
+            --layout-sidebar-shadow: none;
+            --layout-main-bg: transparent;
+            --layout-main-border: transparent;
+        }
+
+        /* 暗黑模式专用样式覆盖 */
+        [data-theme="dark"] body {
+            background: linear-gradient(135deg, var(--bg-gradient-1) 0%, var(--bg-gradient-2) 50%, var(--bg-gradient-3) 100%);
+            background-attachment: fixed;
+        }
+
+        /* 暗黑模式 - 侧边栏优化 */
+        [data-theme="dark"] .sidebar {
+            background: var(--layout-sidebar-bg);
+            border: 1px solid var(--layout-sidebar-border);
+            box-shadow: var(--layout-sidebar-shadow);
+        }
+
+        [data-theme="dark"] .sidebar-header {
+            background: var(--sidebar-section-bg);
+            border: 1px solid var(--panel-glass-border-soft);
+        }
+
+        [data-theme="dark"] .sidebar-header h2 {
+            color: #81c784;
+        }
+
+        /* 暗黑模式 - Logo样式 */
+        [data-theme="dark"] .logo-icon {
+            background: linear-gradient(135deg, #66bb6a 0%, #388e3c 100%);
+            box-shadow: 0 4px 12px rgba(102, 187, 106, 0.4);
+        }
+
+        [data-theme="dark"] .logo-title {
+            color: #81c784;
+        }
+
+        /* 暗黑模式 - 重大发现按钮 */
+        [data-theme="dark"] .major-finding-btn {
+            background: var(--sidebar-card-bg);
+            border: 1px solid var(--panel-glass-border-soft);
+        }
+
+        [data-theme="dark"] .major-finding-btn:hover {
+            background: var(--sidebar-card-hover-bg);
+            box-shadow: var(--sidebar-card-shadow);
+        }
+
+        [data-theme="dark"] .major-finding-btn.active {
+            background: var(--sidebar-card-active-bg);
+            border-left: 4px solid #ff9800;
+            box-shadow: inset 0 2px 8px rgba(255, 152, 0, 0.15), var(--sidebar-card-shadow);
+        }
+
+        [data-theme="dark"] .major-finding-btn .title {
+            color: #ffb74d;
+        }
+
+        [data-theme="dark"] .major-finding-btn .count {
+            color: #9e9e9e;
+        }
+
+        /* 暗黑模式 - 轮次项 */
+        [data-theme="dark"] .round-item {
+            background: var(--sidebar-card-bg);
+            border: 1px solid var(--panel-glass-border-soft);
+        }
+
+        [data-theme="dark"] .round-item:hover {
+            background: var(--sidebar-card-hover-bg);
+            border-color: rgba(102, 187, 106, 0.26);
+            box-shadow: var(--sidebar-card-shadow);
+        }
+
+        [data-theme="dark"] .round-item.active {
+            background: var(--sidebar-card-active-bg);
+            border-color: rgba(102, 187, 106, 0.4);
+            box-shadow: 0 18px 36px rgba(102, 187, 106, 0.15);
+        }
+
+        [data-theme="dark"] .round-item .round-num {
+            color: #81c784;
+        }
+
+        [data-theme="dark"] .round-item .llm-name {
+            color: #b0b0b0;
+        }
+
+        [data-theme="dark"] .round-item .round-meta {
+            color: #808080;
+        }
+
+        /* 暗黑模式 - 聊天头部 */
+        [data-theme="dark"] .chat-header {
+            background: var(--panel-glass-bg);
+            border: 1px solid var(--panel-glass-border);
+            box-shadow: var(--panel-glass-shadow);
+        }
+
+        [data-theme="dark"] .chat-header h2 {
+            color: #81c784;
+        }
+
+        [data-theme="dark"] .chat-header .subtitle {
+            color: #808080;
+        }
+
+        [data-theme="dark"] .chat-header::before,
+        [data-theme="dark"] .user-input-area::before {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(102, 187, 106, 0.08) 58%, rgba(255, 255, 255, 0.02) 100%);
+        }
+
+        /* 暗黑模式 - 消息内容 */
+        [data-theme="dark"] .message-content {
+            background: var(--message-content-bg);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+            color: var(--text-primary);
+        }
+
+        [data-theme="dark"] .message-content:hover {
+            box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+        }
+
+        [data-theme="dark"] .message.user .message-content {
+            background: var(--message-user-bg);
+            border-color: rgba(102, 187, 106, 0.15);
+        }
+
+        [data-theme="dark"] .message.tool .message-content {
+            background: var(--message-tool-bg);
+            border-color: rgba(255, 152, 0, 0.15);
+        }
+
+        /* 暗黑模式 - 消息角色标签 */
+        [data-theme="dark"] .message-role.user {
+            background: rgba(102, 187, 106, 0.85);
+            box-shadow: 0 2px 10px rgba(102, 187, 106, 0.25);
+        }
+
+        [data-theme="dark"] .message-role.assistant {
+            background: rgba(66, 165, 66, 0.85);
+            box-shadow: 0 2px 10px rgba(66, 165, 66, 0.25);
+        }
+
+        [data-theme="dark"] .message-role.tool {
+            background: rgba(255, 152, 0, 0.85);
+            box-shadow: 0 2px 10px rgba(255, 152, 0, 0.25);
+        }
+
+        [data-theme="dark"] .message-role.system {
+            background: rgba(97, 97, 97, 0.85);
+            box-shadow: 0 2px 10px rgba(97, 97, 97, 0.25);
+        }
+
+        [data-theme="dark"] .message-time {
+            color: #707070;
+        }
+
+        /* 暗黑模式 - 思考块 */
+        [data-theme="dark"] .thinking-block {
+            background: var(--thinking-block-bg);
+            border-left: 3px solid #66bb6a;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        [data-theme="dark"] .thinking-label {
+            color: #81c784;
+        }
+
+        [data-theme="dark"] .thinking-content {
+            color: #a0a0a0;
+        }
+
+        /* 暗黑模式 - 工具调用 */
+        [data-theme="dark"] .tool-call {
+            background: var(--tool-call-bg);
+            border: 1px solid rgba(255, 152, 0, 0.2);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+        }
+
+        [data-theme="dark"] .tool-header {
+            background: var(--tool-header-bg);
+        }
+
+        [data-theme="dark"] .tool-header:hover {
+            background: var(--tool-header-hover-bg);
+        }
+
+        [data-theme="dark"] .tool-icon {
+            color: #ffb74d;
+        }
+
+        [data-theme="dark"] .tool-name {
+            color: #ffb74d;
+        }
+
+        [data-theme="dark"] .tool-toggle {
+            color: #707070;
+        }
+
+        [data-theme="dark"] .tool-args-section {
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
+            background: rgba(30, 30, 30, 0.6);
+        }
+
+        [data-theme="dark"] .tool-args {
+            background: var(--tool-args-bg);
+            color: #a0a0a0;
+            border: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        [data-theme="dark"] .tool-result {
+            background: rgba(30, 30, 30, 0.6);
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        [data-theme="dark"] .tool-result-content {
+            background: var(--tool-result-bg);
+            color: #a0a0a0;
+            border: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        [data-theme="dark"] .tool-label {
+            color: #808080;
+        }
+
+        /* 暗黑模式 - 代码块 */
+        [data-theme="dark"] .message-content code {
+            background: rgba(45, 65, 50, 0.9);
+            color: #a5d6a7;
+        }
+
+        [data-theme="dark"] .message-content pre {
+            background: var(--code-block-bg);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        [data-theme="dark"] .message-content pre code {
+            color: #b0b0b0;
+        }
+
+        /* 暗黑模式 - 状态指示器 */
+        [data-theme="dark"] .status-indicator {
+            background: var(--status-indicator-bg);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+        }
+
+        /* 暗黑模式 - 发现卡片 */
+        [data-theme="dark"] .finding-card {
+            background: var(--finding-card-bg);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-left: 4px solid #ff9800;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+        }
+
+        [data-theme="dark"] .finding-card:hover {
+            box-shadow: 0 8px 28px rgba(255, 152, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+        }
+
+        [data-theme="dark"] .finding-title {
+            color: #ffb74d;
+        }
+
+        [data-theme="dark"] .finding-meta {
+            color: #707070;
+        }
+
+        [data-theme="dark"] .finding-content {
+            color: #b0b0b0;
+        }
+
+        [data-theme="dark"] .finding-round-tag {
+            background: rgba(45, 65, 50, 0.9);
+            color: #81c784;
+            border: 1px solid rgba(102, 187, 106, 0.2);
+        }
+
+        /* 暗黑模式 - 总结消息 */
+        [data-theme="dark"] .summary-label {
+            background: linear-gradient(135deg, rgba(81, 101, 196, 0.9) 0%, rgba(126, 87, 154, 0.9) 100%);
+            box-shadow: 0 4px 16px rgba(102, 126, 234, 0.25);
+        }
+
+        [data-theme="dark"] .summary-content {
+            background: var(--summary-content-bg);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+            color: var(--text-primary);
+        }
+
+        [data-theme="dark"] .summary-content::before {
+            background: linear-gradient(90deg, #5165c4 0%, #7e579a 100%);
+        }
+
+        [data-theme="dark"] .summary-time {
+            color: #707070;
+        }
+
+        /* 暗黑模式 - 用户输入区域 */
+        [data-theme="dark"] .user-input-area {
+            background: var(--panel-glass-footer-bg);
+            border: 1px solid var(--panel-glass-border);
+            box-shadow: var(--panel-glass-shadow);
+        }
+
+        [data-theme="dark"] .user-input-area textarea {
+            background: rgba(20, 20, 20, 0.22);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            color: var(--text-primary);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 10px 24px rgba(0, 0, 0, 0.18);
+        }
+
+        [data-theme="dark"] .user-input-area textarea:focus {
+            border-color: #66bb6a;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 0 0 3px rgba(102, 187, 106, 0.15), 0 12px 26px rgba(0, 0, 0, 0.24);
+            background: rgba(32, 32, 32, 0.3);
+        }
+
+        [data-theme="dark"] .user-input-area textarea::placeholder {
+            color: #606060;
+        }
+
+        /* 暗黑模式 - 发送按钮 */
+        [data-theme="dark"] .send-btn {
+            background: linear-gradient(135deg, rgba(102, 187, 106, 0.9) 0%, rgba(76, 175, 80, 0.9) 100%);
+            box-shadow: 0 4px 16px rgba(76, 175, 80, 0.25);
+        }
+
+        [data-theme="dark"] .send-btn:hover {
+            background: linear-gradient(135deg, rgba(76, 175, 80, 1) 0%, rgba(67, 160, 71, 1) 100%);
+            box-shadow: 0 6px 20px rgba(76, 175, 80, 0.35);
+        }
+
+        [data-theme="dark"] .send-btn:disabled {
+            background: rgba(55, 70, 55, 0.8);
+            box-shadow: none;
+        }
+
+        /* 暗黑模式 - 待发送消息指示器 */
+        [data-theme="dark"] .pending-message-indicator {
+            background: rgba(30, 50, 70, 0.9);
+            color: #64b5f6;
+            border: 1px solid rgba(100, 181, 246, 0.15);
+        }
+
+        /* 暗黑模式 - 主题切换按钮 */
+        [data-theme="dark"] .theme-toggle-btn {
+            background: rgba(45, 45, 45, 0.9);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+        }
+
+        [data-theme="dark"] .theme-toggle-btn:hover {
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+        }
+
+        [data-theme="dark"] .tool-bulk-toggle-btn {
+            background: rgba(45, 45, 45, 0.9);
+            color: #e8eaed;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+        }
+
+        [data-theme="dark"] .tool-bulk-toggle-btn:hover:not(:disabled) {
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+        }
+
+        /* 暗黑模式 - 滚动条 */
+        [data-theme="dark"] ::-webkit-scrollbar-track {
+            background: #1a1a1a;
+        }
+
+        [data-theme="dark"] ::-webkit-scrollbar-thumb {
+            background: #404040;
+            border-radius: 3px;
+        }
+
+        [data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+            background: #66bb6a;
+        }
+
+        /* 暗黑模式 - 加载动画 */
+        [data-theme="dark"] .loading-dots span {
+            background-color: #66bb6a;
+        }
+
+        /* 暗黑模式 - 空状态 */
+        [data-theme="dark"] .empty-state {
+            color: #606060;
+        }
+
+        body {
+            font-family: var(--font-sans);
+            background: linear-gradient(135deg, var(--bg-gradient-1) 0%, var(--bg-gradient-2) 50%, var(--bg-gradient-3) 100%);
+            background-attachment: fixed;
+            color: var(--text-primary);
+            height: 100vh;
+            overflow: hidden;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            text-rendering: optimizeLegibility;
+            transition: background 0.3s ease, color 0.3s ease;
+        }
+
+        .container {
+            display: flex;
+            height: 100vh;
+            padding: 16px;
+            gap: 16px;
+            position: relative;
+            isolation: isolate;
+        }
+
+        .container::before {
+            display: none;
+        }
+
+        .container::after {
+            display: none;
+        }
+
+        .container > * {
+            position: relative;
+            z-index: 1;
+        }
+
+        /* 左侧边栏 - 毛玻璃效果 */
+        .sidebar {
+            width: 30%;
+            min-width: 250px;
+            max-width: 400px;
+            flex-shrink: 0;
+            padding: 14px;
+            background: var(--layout-sidebar-bg);
+            border: 1px solid var(--layout-sidebar-border);
+            border-radius: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            box-shadow: var(--layout-sidebar-shadow);
+            overflow: hidden;
+            position: relative;
+            isolation: isolate;
+            min-height: 0;
+        }
+
+        .sidebar::before {
+            display: none;
+        }
+
+        .sidebar > * {
+            position: relative;
+            z-index: 1;
+        }
+
+        .sidebar-header {
+            padding: 18px;
+            background: var(--sidebar-section-bg);
+            backdrop-filter: var(--panel-filter);
+            -webkit-backdrop-filter: var(--panel-filter);
+            border: 1px solid var(--sidebar-control-border);
+            border-radius: 18px;
+            box-shadow: inset 0 1px 0 var(--sidebar-control-highlight);
+        }
+
+        /* 项目Logo样式 */
+        .project-logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #4caf50 0%, #2e7d32 100%);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
+            flex-shrink: 0;
+        }
+
+        .logo-text {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .logo-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #2e7d32;
+            line-height: 1.2;
+            letter-spacing: -0.5px;
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }
+
+        .logo-title:hover {
+            color: #1b5e20;
+        }
+
+        .logo-subtitle {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        .logo-divider {
+            height: 1px;
+            background: linear-gradient(90deg, transparent 0%, rgba(76, 175, 80, 0.3) 50%, transparent 100%);
+            margin: 12px 0;
+        }
+
+        .sidebar-header h2 {
+            font-size: 16px;
+            color: #2e7d32;
+            line-height: 1.4;
+            margin: 0;
+        }
+
+        .sidebar-header p {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        /* 重大发现按钮 - 毛玻璃效果 */
+        .major-finding-btn {
+            display: flex;
+            align-items: center;
+            padding: 14px 16px;
+            background: var(--sidebar-card-bg);
+            backdrop-filter: var(--panel-filter);
+            -webkit-backdrop-filter: var(--panel-filter);
+            border: 1px solid var(--sidebar-control-border);
+            border-radius: 16px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: var(--sidebar-card-shadow);
+            overflow: hidden;
+            position: relative;
+        }
+
+        .major-finding-btn:hover {
+            background: var(--sidebar-card-hover-bg);
+            border-color: var(--sidebar-control-hover-border);
+            box-shadow: 0 18px 32px rgba(255, 152, 0, 0.14);
+            transform: translateY(-2px);
+        }
+
+        .major-finding-btn.active {
+            background: var(--sidebar-card-active-bg);
+            border-color: rgba(255, 152, 0, 0.36);
+            border-left: 4px solid #ff9800;
+            box-shadow: inset 0 2px 8px rgba(255, 152, 0, 0.2), 0 18px 32px rgba(255, 152, 0, 0.14);
+        }
+
+        .major-finding-btn::before,
+        .round-item::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.24) 0%, rgba(255, 255, 255, 0.08) 42%, rgba(255, 255, 255, 0.02) 100%);
+            pointer-events: none;
+        }
+
+        .major-finding-btn > *,
+        .round-item > * {
+            position: relative;
+            z-index: 1;
+        }
+
+        .major-finding-btn .icon {
+            font-size: 20px;
+            margin-right: 10px;
+        }
+
+        .major-finding-btn .text {
+            flex: 1;
+        }
+
+        .major-finding-btn .title {
+            font-weight: 600;
+            color: #e65100;
+            font-size: 14px;
+        }
+
+        .major-finding-btn .count {
+            font-size: 12px;
+            color: #888;
+            margin-top: 2px;
+        }
+
+        .major-finding-btn .badge {
+            background-color: #ff9800;
+            color: #fff;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .round-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 2px;
+            min-height: 0;
+        }
+
+        /* 双线程分列布局 */
+        .dual-thread-container {
+            display: flex;
+            gap: 8px;
+            height: 100%;
+        }
+
+        .thread-column {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+
+        .thread-column-header {
+            padding: 8px 12px;
+            background: rgba(255, 255, 255, 0.6);
+            backdrop-filter: var(--glass-blur-light);
+            -webkit-backdrop-filter: var(--glass-blur-light);
+            border-radius: 8px 8px 0 0;
+            font-weight: 600;
+            font-size: 13px;
+            color: #2e7d32;
+            text-align: center;
+            border-bottom: 2px solid;
+            margin-bottom: 6px;
+        }
+
+        .thread-column-header.thread-1 {
+            border-bottom-color: #4caf50;
+            background: rgba(232, 245, 233, 0.7);
+            border: 1px solid rgba(76, 175, 80, 0.3);
+            border-bottom: 2px solid #4caf50;
+        }
+
+        .thread-column-header.thread-2 {
+            border-bottom-color: #2196f3;
+            background: rgba(227, 242, 253, 0.7);
+            color: #1565c0;
+            border: 1px solid rgba(33, 150, 243, 0.3);
+            border-bottom: 2px solid #2196f3;
+        }
+
+        .thread-column-content {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        /* 暗黑模式 - 双线程分列布局 */
+        [data-theme="dark"] .thread-column-header {
+            background: rgba(45, 45, 45, 0.8);
+            color: #81c784;
+        }
+
+        [data-theme="dark"] .thread-column-header.thread-1 {
+            border-bottom-color: #66bb6a;
+            background: rgba(45, 65, 45, 0.8);
+        }
+
+        [data-theme="dark"] .thread-column-header.thread-2 {
+            border-bottom-color: #64b5f6;
+            background: rgba(30, 50, 70, 0.8);
+            color: #64b5f6;
+        }
+
+        .round-item {
+            padding: 12px 14px;
+            margin-bottom: 10px;
+            background: var(--sidebar-card-bg);
+            backdrop-filter: var(--panel-filter);
+            -webkit-backdrop-filter: var(--panel-filter);
+            border-radius: 16px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 1px solid var(--sidebar-control-border);
+            box-shadow: var(--sidebar-card-shadow);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .round-item:hover {
+            background: var(--sidebar-card-hover-bg);
+            border-color: var(--sidebar-control-hover-border);
+            box-shadow: 0 18px 30px rgba(43, 66, 89, 0.14);
+            transform: translateY(-2px);
+        }
+
+        .round-item.active {
+            background: var(--sidebar-card-active-bg);
+            border-color: var(--sidebar-control-active-border);
+            box-shadow: 0 20px 34px rgba(76, 175, 80, 0.18);
+        }
+
+        .round-item .round-num {
+            font-weight: bold;
+            color: #2e7d32;
+            margin-bottom: 4px;
+            font-size: 14px;
+        }
+
+        .round-item .llm-name {
+            font-size: 13px;
+            color: #666;
+        }
+
+        .round-item .round-meta {
+            font-size: 11px;
+            color: #888;
+            margin-top: 4px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .status-running {
+            color: #ff9800;
+        }
+
+        .status-completed {
+            color: #4caf50;
+        }
+
+        .status-error {
+            color: #f44336;
+        }
+
+        /* 右侧主内容区 */
+        .main-content {
+            flex: 1;
+            min-width: 0;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            background: var(--layout-main-bg);
+            border: 1px solid var(--layout-main-border);
+            overflow: hidden;
+            position: relative;
+            isolation: isolate;
+            border-radius: 28px;
+        }
+
+        .main-content::before {
+            display: none;
+        }
+
+        .main-content::after {
+            display: none;
+        }
+
+        .chat-header {
+            position: absolute;
+            top: 16px;
+            left: 16px;
+            right: 16px;
+            z-index: 3;
+            padding: 16px 18px;
+            background: var(--panel-glass-bg);
+            backdrop-filter: var(--panel-filter);
+            -webkit-backdrop-filter: var(--panel-filter);
+            border: 1px solid var(--panel-glass-border);
+            border-radius: 14px;
+            box-shadow: var(--panel-glass-shadow);
+            overflow: hidden;
+        }
+
+        .chat-header::before,
+        .user-input-area::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.08) 42%, rgba(255, 255, 255, 0.02) 100%);
+            pointer-events: none;
+        }
+
+        .chat-header::after,
+        .user-input-area::after {
+            display: none;
+        }
+
+        .chat-header > *,
+        .user-input-area > * {
+            position: relative;
+            z-index: 1;
+        }
+
+        .chat-header-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 18px;
+        }
+
+        .chat-header-copy {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .chat-header h2 {
+            font-size: 16px;
+            color: #2e7d32;
+            line-height: 1.4;
+            margin: 0;
+        }
+
+        .chat-header .subtitle {
+            font-size: 12px;
+            color: #888;
+            margin-top: 4px;
+        }
+
+        .chat-container {
+            position: absolute;
+            inset: 0;
+            overflow-y: auto;
+            padding: 124px 20px 180px;
+            z-index: 1;
+            scroll-padding-top: 124px;
+            scroll-padding-bottom: 180px;
+        }
+
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #999;
+        }
+
+        .empty-state .icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+
+        /* 消息样式 - 毛玻璃效果 */
+        .message {
+            margin-bottom: 12px;
+            max-width: 85%;
+        }
+
+        .message.user {
+            margin-left: auto;
+        }
+
+        .message-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+
+        .message-role {
+            font-weight: 600;
+            font-size: 12px;
+            padding: 2px 8px;
+            border-radius: 6px;
+            margin-right: 8px;
+            backdrop-filter: var(--glass-blur-light);
+            -webkit-backdrop-filter: var(--glass-blur-light);
+        }
+
+        .message-role.user {
+            background: rgba(76, 175, 80, 0.9);
+            color: #fff;
+            box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
+        }
+
+        .message-role.assistant {
+            background: rgba(46, 125, 50, 0.9);
+            color: #fff;
+            box-shadow: 0 2px 8px rgba(46, 125, 50, 0.3);
+        }
+
+        .message-role.tool {
+            background: rgba(255, 152, 0, 0.9);
+            color: #fff;
+            box-shadow: 0 2px 8px rgba(255, 152, 0, 0.3);
+        }
+
+        .message-role.system {
+            background: rgba(158, 158, 158, 0.9);
+            color: #fff;
+            box-shadow: 0 2px 8px rgba(158, 158, 158, 0.3);
+        }
+
+        .message-time {
+            font-size: 11px;
+            color: #999;
+        }
+
+        .message-content {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: var(--glass-blur-light);
+            -webkit-backdrop-filter: var(--glass-blur-light);
+            padding: 12px 14px;
+            border-radius: 12px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-break: break-word;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+            font-size: 13px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        .message-content:hover {
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+        }
+
+        .message.user .message-content {
+            background: rgba(232, 245, 233, 0.85);
+            border-color: rgba(76, 175, 80, 0.2);
+        }
+
+        /* 工具响应消息放在右边 */
+        .message.tool {
+            margin-left: auto;
+        }
+
+        .message.tool .message-content {
+            background: rgba(255, 243, 224, 0.85);
+            border-color: rgba(255, 152, 0, 0.2);
+        }
+
+        /* 思考内容样式 - 毛玻璃效果 */
+        .thinking-block {
+            background: rgba(240, 244, 248, 0.8);
+            backdrop-filter: var(--glass-blur-light);
+            -webkit-backdrop-filter: var(--glass-blur-light);
+            border-left: 3px solid #4caf50;
+            padding: 10px 12px;
+            margin-bottom: 8px;
+            border-radius: 0 8px 8px 0;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+        }
+
+        .thinking-label {
+            font-size: 11px;
+            color: #2e7d32;
+            margin-bottom: 4px;
+            font-weight: 600;
+        }
+
+        .thinking-content {
+            font-size: 12px;
+            color: #666;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        /* 工具调用样式 - 毛玻璃效果 */
+        .tool-call {
+            background: rgba(255, 248, 225, 0.85);
+            backdrop-filter: var(--glass-blur-light);
+            -webkit-backdrop-filter: var(--glass-blur-light);
+            border: 1px solid rgba(255, 202, 40, 0.5);
+            border-radius: 10px;
+            margin-top: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(255, 152, 0, 0.1);
+        }
+
+        .tool-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 14px;
+            cursor: pointer;
+            background: rgba(255, 248, 225, 0.6);
+            transition: all 0.3s ease;
+            user-select: none;
+        }
+
+        .tool-header:hover {
+            background: rgba(255, 236, 179, 0.9);
+        }
+
+        .tool-header-left {
+            display: flex;
+            align-items: center;
+        }
+
+        .tool-icon {
+            margin-right: 8px;
+            color: #ff9800;
+        }
+
+        .tool-name {
+            font-weight: 600;
+            color: #e65100;
+            font-size: 13px;
+        }
+
+        .tool-toggle {
+            color: #888;
+            font-size: 12px;
+            transition: transform 0.3s ease;
+        }
+
+        .tool-toggle.expanded {
+            transform: rotate(180deg);
+        }
+
+        .tool-args-section {
+            display: none;
+            padding: 10px 14px;
+            border-top: 1px solid rgba(255, 202, 40, 0.3);
+            background: rgba(255, 255, 255, 0.7);
+        }
+
+        .tool-args-section.show {
+            display: block;
+        }
+
+        .tool-args {
+            background: rgba(245, 245, 245, 0.8);
+            padding: 10px 12px;
+            border-radius: 8px;
+            font-family: var(--font-sans);
+            font-size: 12px;
+            overflow-x: auto;
+            color: #555;
+            backdrop-filter: var(--glass-blur-light);
+            -webkit-backdrop-filter: var(--glass-blur-light);
+        }
+
+        .tool-result {
+            padding: 10px 14px;
+            background: rgba(255, 255, 255, 0.7);
+            border-top: 1px solid rgba(255, 202, 40, 0.3);
+        }
+
+        .tool-result-content {
+            background: rgba(245, 245, 245, 0.8);
+            padding: 10px 12px;
+            border-radius: 8px;
+            font-family: var(--font-sans);
+            font-size: 13px;
+            color: #555;
+            white-space: pre-wrap;
+            word-break: break-word;
+            max-height: 180px;
+            overflow-y: auto;
+            backdrop-filter: var(--glass-blur-light);
+            -webkit-backdrop-filter: var(--glass-blur-light);
+        }
+
+        .tool-label {
+            font-size: 11px;
+            color: #888;
+            margin-bottom: 6px;
+            font-weight: 500;
+        }
+
+        /* 滚动条样式 */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f0f0f0;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #4caf50;
+        }
+
+        /* 加载动画 */
+        .loading-dots {
+            display: inline-flex;
+            gap: 4px;
+        }
+
+        .loading-dots span {
+            width: 6px;
+            height: 6px;
+            background-color: #4caf50;
+            border-radius: 50%;
+            animation: bounce 1.4s infinite ease-in-out both;
+        }
+
+        .loading-dots span:nth-child(1) { animation-delay: -0.32s; }
+        .loading-dots span:nth-child(2) { animation-delay: -0.16s; }
+        .loading-dots span:nth-child(3) { animation-delay: 0; }
+
+        @keyframes bounce {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1); }
+        }
+
+        /* 代码块样式 */
+        .message-content code {
+            background-color: #e8f5e9;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 12px;
+            color: #2e7d32;
+        }
+
+        .message-content pre {
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 8px 0;
+        }
+
+        .message-content pre code {
+            background-color: transparent;
+            padding: 0;
+            color: #555;
+        }
+
+/* 状态指示器 - 毛玻璃效果 */
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px;
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: var(--glass-blur-light);
+            -webkit-backdrop-filter: var(--glass-blur-light);
+            border-radius: 20px;
+            font-size: 13px;
+            margin-left: auto;
+            border: 1px solid var(--glass-border);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            height: 36px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .status-dot.running {
+            background-color: #ff9800;
+            animation: pulse 1s infinite;
+            box-shadow: 0 0 8px rgba(255, 152, 0, 0.5);
+        }
+
+        .status-dot.completed {
+            background-color: #4caf50;
+            box-shadow: 0 0 8px rgba(76, 175, 80, 0.5);
+        }
+
+        .status-dot.error {
+            background-color: #f44336;
+            box-shadow: 0 0 8px rgba(244, 67, 54, 0.5);
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.6; transform: scale(0.9); }
+        }
+
+        /* 重大发现列表样式 - 毛玻璃效果 */
+        .finding-card {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: var(--glass-blur-light);
+            -webkit-backdrop-filter: var(--glass-blur-light);
+            border-radius: 12px;
+            padding: 16px 18px;
+            margin-bottom: 12px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+            border-left: 4px solid #ff9800;
+            transition: all 0.3s ease;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-left: 4px solid #ff9800;
+        }
+
+        .finding-card:hover {
+            box-shadow: 0 8px 24px rgba(255, 152, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+            transform: translateY(-2px);
+        }
+
+        .finding-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .finding-title {
+            font-weight: 600;
+            font-size: 15px;
+            color: #e65100;
+            flex: 1;
+        }
+
+        .finding-meta {
+            font-size: 11px;
+            color: #999;
+            margin-left: 12px;
+            white-space: nowrap;
+        }
+
+.finding-content {
+    font-size: 13px;
+    color: #555;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+/* 发现卡片底部区域 */
+.finding-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 10px;
+}
+
+/* 复制按钮样式 */
+.copy-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    background: rgba(76, 175, 80, 0.1);
+    border: 1px solid rgba(76, 175, 80, 0.3);
+    border-radius: 4px;
+    color: #4caf50;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: var(--font-sans);
+}
+
+.copy-btn:hover {
+    background: rgba(76, 175, 80, 0.2);
+    border-color: rgba(76, 175, 80, 0.5);
+}
+
+.copy-btn:active {
+    transform: scale(0.95);
+}
+
+.copy-btn.copied {
+    background: rgba(76, 175, 80, 0.3);
+    color: #2e7d32;
+    border-color: #4caf50;
+}
+
+/* 暗黑模式 - 复制按钮 */
+[data-theme="dark"] .copy-btn {
+    background: rgba(102, 187, 106, 0.15);
+    border-color: rgba(102, 187, 106, 0.3);
+    color: #81c784;
+}
+
+[data-theme="dark"] .copy-btn:hover {
+    background: rgba(102, 187, 106, 0.25);
+    border-color: rgba(102, 187, 106, 0.5);
+}
+
+[data-theme="dark"] .copy-btn.copied {
+    background: rgba(102, 187, 106, 0.35);
+    color: #a5d6a7;
+    border-color: #66bb6a;
+}
+
+
+        /* 总结消息样式 - 毛玻璃效果 */
+        .summary-message {
+            margin-bottom: 12px;
+            max-width: 85%;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .summary-header {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 8px;
+        }
+
+        .summary-label {
+            font-weight: 600;
+            font-size: 13px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.9) 0%, rgba(118, 75, 162, 0.9) 100%);
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+            backdrop-filter: var(--glass-blur-light);
+            -webkit-backdrop-filter: var(--glass-blur-light);
+        }
+
+        .summary-content {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: var(--glass-blur-light);
+            -webkit-backdrop-filter: var(--glass-blur-light);
+            padding: 18px;
+            border-radius: 14px;
+            line-height: 1.7;
+            white-space: pre-wrap;
+            word-break: break-word;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+            font-size: 14px;
+            font-family: var(--font-sans);
+            color: #333;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .summary-content::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            border-radius: 14px 14px 0 0;
+        }
+
+        .summary-time {
+            text-align: center;
+            font-size: 11px;
+            color: #999;
+            margin-top: 8px;
+        }
+
+        /* 用户输入区域样式 - 毛玻璃效果 */
+        .user-input-area {
+            position: absolute;
+            left: 16px;
+            right: 16px;
+            bottom: 16px;
+            z-index: 3;
+            padding: 16px 18px calc(16px + env(safe-area-inset-bottom, 0px));
+            background: var(--panel-glass-footer-bg);
+            backdrop-filter: var(--panel-filter);
+            -webkit-backdrop-filter: var(--panel-filter);
+            border: 1px solid var(--panel-glass-border);
+            border-radius: 14px;
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            box-shadow: var(--panel-glass-shadow);
+            overflow: hidden;
+        }
+
+        .user-input-area textarea {
+            flex: 1;
+            padding: 12px 16px;
+            border: 1px solid rgba(255, 255, 255, 0.52);
+            border-radius: 12px;
+            font-size: 14px;
+            font-family: var(--font-sans);
+            resize: none;
+            outline: none;
+            transition: all 0.3s ease;
+            min-height: 44px;
+            max-height: 120px;
+            line-height: 1.5;
+            background: rgba(255, 255, 255, 0.18);
+            backdrop-filter: var(--glass-blur-light);
+            -webkit-backdrop-filter: var(--glass-blur-light);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55), 0 8px 20px rgba(15, 23, 42, 0.05);
+        }
+
+        .user-input-area textarea:focus {
+            border-color: #4caf50;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78), 0 0 0 3px rgba(76, 175, 80, 0.15), 0 10px 24px rgba(76, 175, 80, 0.14);
+            background: rgba(255, 255, 255, 0.26);
+        }
+
+        .user-input-area textarea::placeholder {
+            color: #aaa;
+        }
+
+        .send-btn {
+            padding: 12px 24px;
+            background: linear-gradient(135deg, rgba(76, 175, 80, 0.95) 0%, rgba(67, 160, 71, 0.95) 100%);
+            color: #fff;
+            border: none;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+            box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
+            backdrop-filter: var(--glass-blur-light);
+            -webkit-backdrop-filter: var(--glass-blur-light);
+        }
+
+        .send-btn:hover {
+            background: linear-gradient(135deg, rgba(67, 160, 71, 1) 0%, rgba(56, 142, 60, 1) 100%);
+            box-shadow: 0 6px 16px rgba(76, 175, 80, 0.4);
+            transform: translateY(-1px);
+        }
+
+        .send-btn:active {
+            transform: translateY(0) scale(0.98);
+        }
+
+        .send-btn:disabled {
+            background: rgba(200, 230, 201, 0.8);
+            cursor: not-allowed;
+            box-shadow: none;
+            transform: none;
+        }
+
+        .pending-message-indicator {
+            display: none;
+            padding: 6px 14px;
+            background: rgba(227, 242, 253, 0.9);
+            backdrop-filter: var(--glass-blur-light);
+            -webkit-backdrop-filter: var(--glass-blur-light);
+            border-radius: 20px;
+            font-size: 12px;
+            color: #1565c0;
+            margin-right: 8px;
+            border: 1px solid rgba(21, 101, 192, 0.1);
+        }
+
+        .pending-message-indicator.show {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* 代码块样式优化 - 使用代码字体变量 */
+        .message-content code {
+            background: rgba(232, 245, 233, 0.9);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            color: #2e7d32;
+        }
+
+        .message-content pre {
+            background: rgba(245, 245, 245, 0.9);
+            padding: 12px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 8px 0;
+            backdrop-filter: var(--glass-blur-light);
+            -webkit-backdrop-filter: var(--glass-blur-light);
+        }
+
+        .message-content pre code {
+            background-color: transparent;
+            padding: 0;
+            color: #555;
+        }
+
+/* 发现卡片标签容器 */
+.finding-tags {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    line-height: 1;
+}
+
+/* 发现卡片标签 - 通用样式 */
+.finding-round-tag,
+.finding-thread-tag {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    line-height: 1;
+    height: 22px;
+    min-height: 22px;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    backdrop-filter: var(--glass-blur-light);
+    -webkit-backdrop-filter: var(--glass-blur-light);
+}
+
+/* 轮次标签 */
+.finding-round-tag {
+    background: rgba(232, 245, 233, 0.9);
+    color: #2e7d32;
+    border: 1px solid rgba(76, 175, 80, 0.2);
+}
+
+/* 线程标签 */
+.finding-thread-tag {
+    background: rgba(227, 242, 253, 0.9);
+    color: #1565c0;
+    border: 1px solid rgba(21, 101, 192, 0.2);
+}
+
+        /* 暗黑模式 - 轮次标签 */
+        [data-theme="dark"] .finding-round-tag {
+            background: rgba(45, 65, 50, 0.9);
+            color: #81c784;
+            border-color: rgba(102, 187, 106, 0.2);
+        }
+
+        /* 暗黑模式 - 线程标签 */
+        [data-theme="dark"] .finding-thread-tag {
+            background: rgba(30, 50, 70, 0.9);
+            color: #64b5f6;
+            border-color: rgba(100, 181, 246, 0.2);
+        }
+
+        /* 暗黑模式切换按钮 */
+        .theme-toggle-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 36px;
+            height: 36px;
+            padding: 0;
+            background: var(--status-indicator-bg);
+            backdrop-filter: var(--glass-blur-light);
+            -webkit-backdrop-filter: var(--glass-blur-light);
+            border: 1px solid var(--glass-border);
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 18px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        }
+
+        .theme-toggle-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .theme-toggle-btn:active {
+            transform: scale(0.95);
+        }
+
+        .tool-bulk-toggle-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 36px;
+            height: 36px;
+            padding: 0;
+            background: var(--status-indicator-bg);
+            backdrop-filter: var(--glass-blur-light);
+            -webkit-backdrop-filter: var(--glass-blur-light);
+            border: 1px solid var(--glass-border);
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 18px;
+            color: inherit;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        }
+
+        .tool-bulk-toggle-btn:hover:not(:disabled) {
+            transform: scale(1.1);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .tool-bulk-toggle-btn:active:not(:disabled) {
+            transform: scale(0.95);
+        }
+
+        .tool-bulk-toggle-btn:disabled {
+            cursor: not-allowed;
+            opacity: 0.55;
+            box-shadow: none;
+        }
+
+        /* 右上角按钮组 */
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
+        /* 功能状态标签 */
+        .feature-tags {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        @media (max-width: 900px) {
+            .container {
+                padding: 12px;
+                gap: 12px;
+            }
+
+            .container::before,
+            .container::after {
+                inset: 8px;
+                border-radius: 24px;
+            }
+
+            .chat-header {
+                top: 12px;
+                left: 12px;
+                right: 12px;
+                padding: 14px 16px;
+                border-radius: 12px;
+            }
+
+            .chat-header-bar {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .header-actions {
+                width: 100%;
+                justify-content: space-between;
+            }
+
+            .chat-container {
+                padding: 116px 14px 196px;
+                scroll-padding-top: 116px;
+                scroll-padding-bottom: 196px;
+            }
+
+            .user-input-area {
+                left: 12px;
+                right: 12px;
+                bottom: 12px;
+                padding: 14px 14px calc(14px + env(safe-area-inset-bottom, 0px));
+                border-radius: 12px;
+                flex-wrap: wrap;
+                align-items: stretch;
+            }
+
+            .pending-message-indicator {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .user-input-area textarea {
+                width: 100%;
+            }
+
+            .send-btn {
+                width: 100%;
+            }
+        }
+
+        .feature-tag {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 6px 10px;
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: var(--glass-blur-light);
+            -webkit-backdrop-filter: var(--glass-blur-light);
+            border-radius: 16px;
+            font-size: 12px;
+            font-weight: 500;
+            border: 1px solid var(--glass-border);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+            transition: all 0.3s ease;
+        }
+
+        .feature-tag:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .feature-tag.enabled {
+            background: rgba(232, 245, 233, 0.9);
+            border-color: rgba(76, 175, 80, 0.3);
+        }
+
+        .feature-tag.disabled {
+            background: rgba(245, 245, 245, 0.9);
+            color: var(--text-muted);
+            border-color: rgba(200, 200, 200, 0.3);
+        }
+
+        .feature-tag .tag-icon {
+            font-size: 14px;
+        }
+
+        .feature-tag .tag-text {
+            font-size: 11px;
+        }
+
+        /* 亮色模式 - 小控件增强主题色渐变面 */
+        :root:not([data-theme="dark"]) .sidebar-header,
+        :root:not([data-theme="dark"]) .major-finding-btn,
+        :root:not([data-theme="dark"]) .round-item,
+        :root:not([data-theme="dark"]) .message-content,
+        :root:not([data-theme="dark"]) .thinking-block,
+        :root:not([data-theme="dark"]) .tool-call,
+        :root:not([data-theme="dark"]) .tool-header,
+        :root:not([data-theme="dark"]) .tool-args,
+        :root:not([data-theme="dark"]) .tool-result,
+        :root:not([data-theme="dark"]) .tool-result-content,
+        :root:not([data-theme="dark"]) .status-indicator,
+        :root:not([data-theme="dark"]) .finding-card,
+        :root:not([data-theme="dark"]) .summary-content,
+        :root:not([data-theme="dark"]) .feature-tag,
+        :root:not([data-theme="dark"]) .pending-message-indicator {
+            background-image: var(--light-widget-surface-gradient);
+            border-color: var(--light-widget-outline);
+        }
+
+        :root:not([data-theme="dark"]) .chat-header {
+            background: var(--panel-glass-bg);
+            border-color: var(--panel-glass-border);
+        }
+
+        :root:not([data-theme="dark"]) .user-input-area {
+            background: var(--panel-glass-footer-bg);
+            border-color: var(--panel-glass-border);
+        }
+
+        :root:not([data-theme="dark"]) .message-content {
+            background: var(--light-chat-card-bg);
+            border-color: rgba(148, 163, 184, 0.2);
+            box-shadow: 0 6px 18px rgba(43, 66, 89, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.55);
+            color: #334155;
+        }
+
+        :root:not([data-theme="dark"]) .message.user .message-content {
+            background: var(--light-chat-user-bg);
+            border-color: rgba(46, 125, 50, 0.2);
+        }
+
+        :root:not([data-theme="dark"]) .message.tool .message-content {
+            background: var(--light-chat-tool-bg);
+            border-color: rgba(245, 158, 11, 0.22);
+        }
+
+        :root:not([data-theme="dark"]) .thinking-block {
+            background: var(--light-chat-thinking-bg);
+            box-shadow: 0 4px 12px rgba(43, 66, 89, 0.06);
+        }
+
+        :root:not([data-theme="dark"]) .tool-call {
+            background: var(--light-chat-toolcall-bg);
+            border-color: rgba(245, 158, 11, 0.24);
+            box-shadow: 0 6px 16px rgba(245, 158, 11, 0.1);
+        }
+
+        :root:not([data-theme="dark"]) .tool-header {
+            background: rgba(255, 248, 231, 0.82);
+        }
+
+        :root:not([data-theme="dark"]) .tool-header:hover {
+            background: rgba(255, 241, 204, 0.92);
+        }
+
+        :root:not([data-theme="dark"]) .tool-args-section,
+        :root:not([data-theme="dark"]) .tool-result,
+        :root:not([data-theme="dark"]) .tool-args,
+        :root:not([data-theme="dark"]) .tool-result-content {
+            background: var(--light-chat-subpanel-bg);
+        }
+
+        :root:not([data-theme="dark"]) .summary-content {
+            background: var(--light-chat-summary-bg);
+            border-color: rgba(148, 163, 184, 0.2);
+            color: #334155;
+            box-shadow: 0 8px 22px rgba(43, 66, 89, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+        }
+
+        :root:not([data-theme="dark"]) .major-finding-btn:hover,
+        :root:not([data-theme="dark"]) .round-item:hover,
+        :root:not([data-theme="dark"]) .message-content:hover,
+        :root:not([data-theme="dark"]) .tool-header:hover,
+        :root:not([data-theme="dark"]) .finding-card:hover,
+        :root:not([data-theme="dark"]) .feature-tag:hover {
+            background-image: var(--light-widget-surface-strong);
+        }
+
+        :root:not([data-theme="dark"]) .major-finding-btn.active {
+            background: linear-gradient(135deg, rgba(232, 242, 236, 0.97) 0%, rgba(224, 236, 232, 0.93) 100%);
+            border-color: rgba(46, 125, 50, 0.34);
+            border-left: 4px solid #2e7d32;
+            box-shadow: 0 14px 28px rgba(46, 125, 50, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.42);
+            transform: translateY(-1px);
+        }
+
+        :root:not([data-theme="dark"]) .major-finding-btn.active .title {
+            color: #1b5e20;
+        }
+
+        :root:not([data-theme="dark"]) .major-finding-btn.active .count {
+            color: #3f5f4a;
+        }
+
+        :root:not([data-theme="dark"]) .round-item.active {
+            background: linear-gradient(135deg, rgba(232, 242, 236, 0.97) 0%, rgba(224, 236, 232, 0.93) 100%);
+            border-color: rgba(46, 125, 50, 0.34);
+            border-left: 4px solid #2e7d32;
+            box-shadow: 0 14px 28px rgba(46, 125, 50, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.42);
+            transform: translateY(-1px);
+        }
+
+        :root:not([data-theme="dark"]) .round-item.active .round-num {
+            color: #1b5e20;
+        }
+
+        :root:not([data-theme="dark"]) .round-item.active .llm-name {
+            color: #23412c;
+            font-weight: 600;
+        }
+
+        :root:not([data-theme="dark"]) .round-item.active .round-meta {
+            color: #3f5f4a;
+        }
+
+        :root:not([data-theme="dark"]) .feature-tag.enabled {
+            background: linear-gradient(135deg, rgba(76, 175, 80, 0.95) 0%, rgba(56, 142, 60, 0.94) 100%);
+            color: #ffffff;
+            border-color: rgba(27, 94, 32, 0.42);
+            box-shadow: 0 6px 14px rgba(46, 125, 50, 0.26), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+        }
+
+        :root:not([data-theme="dark"]) .feature-tag.enabled .tag-icon,
+        :root:not([data-theme="dark"]) .feature-tag.enabled .tag-text {
+            color: #ffffff;
+        }
+
+        :root:not([data-theme="dark"]) .feature-tag.disabled {
+            background: linear-gradient(135deg, rgba(245, 247, 250, 0.94) 0%, rgba(236, 240, 243, 0.92) 100%);
+            color: #7b8794;
+            border-color: rgba(148, 163, 184, 0.26);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+            opacity: 0.92;
+        }
+
+        :root:not([data-theme="dark"]) .feature-tag.disabled .tag-icon,
+        :root:not([data-theme="dark"]) .feature-tag.disabled .tag-text {
+            color: inherit;
+        }
+
+        /* 暗黑模式 - 功能状态标签 */
+        [data-theme="dark"] .feature-tag {
+            background: rgba(45, 45, 45, 0.9);
+            border-color: rgba(255, 255, 255, 0.08);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+        }
+
+        [data-theme="dark"] .feature-tag.enabled {
+            background: rgba(45, 65, 45, 0.9);
+            border-color: rgba(102, 187, 106, 0.3);
+        }
+
+        [data-theme="dark"] .feature-tag.disabled {
+            background: rgba(50, 50, 50, 0.9);
+            color: #707070;
+            border-color: rgba(255, 255, 255, 0.04);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 左侧边栏 -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <div class="project-logo">
+                    <div class="logo-icon">😎</div>
+                    <div class="logo-text">
+                        <a href="https://github.com/ekszz/EzCTFer" target="_blank" class="logo-title">⭐ EzCTFer ⭐</a>
+                        <div class="logo-subtitle" id="logo-subtitle">结队解题YES!</div>
+                    </div>
+                </div>
+                <div class="logo-divider"></div>
+                <h2>🤖 LLM 轮次列表</h2>
+                <p id="round-count">共 0 轮调用</p>
+            </div>
+            <!-- 重大发现按钮 -->
+            <div class="major-finding-btn" id="major-finding-btn" onclick="showMajorFindings()">
+                <div class="icon">💡</div>
+                <div class="text">
+                    <div class="title">重大发现</div>
+                    <div class="count" id="finding-count">0 条记录</div>
+                </div>
+                <div class="badge" id="finding-badge" style="display: none;">0</div>
+            </div>
+            <div class="round-list" id="round-list">
+                <!-- 轮次列表将动态生成 -->
+            </div>
+        </div>
+
+        <!-- 右侧主内容区 -->
+        <div class="main-content">
+            <div class="chat-header">
+                <div class="chat-header-bar">
+                    <div class="chat-header-copy">
+                        <h2 id="chat-title">💬 对话详情</h2>
+                        <p class="subtitle" id="chat-subtitle">选择左侧轮次查看详情</p>
+                    </div>
+                    <div class="header-actions">
+                        <div class="feature-tags" id="feature-tags">
+                            <!-- 功能状态标签将动态生成 -->
+                        </div>
+                        <div class="status-indicator" id="status-indicator" style="display: none;">
+                            <div class="status-dot" id="status-dot"></div>
+                            <span id="status-text">运行中</span>
+                        </div>
+                        <button class="tool-bulk-toggle-btn" id="tool-bulk-toggle-btn" onclick="toggleAllToolArgs()" title="展开当前右侧区域全部工具调用" disabled>
+                            📂
+                        </button>
+                        <button class="theme-toggle-btn" id="theme-toggle-btn" onclick="toggleTheme()" title="切换暗黑模式">
+                            🌙
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="chat-container" id="chat-container">
+                <div class="empty-state">
+                    <div class="icon">📭</div>
+                    <p>选择左侧的轮次查看对话详情</p>
+                </div>
+            </div>
+            <!-- 用户输入区域 -->
+            <div class="user-input-area">
+                <div class="pending-message-indicator" id="pending-indicator">
+                    <span>📬</span>
+                    <span>待发送消息</span>
+                </div>
+                <textarea 
+                    id="user-input" 
+                    placeholder="输入给LLM的提示消息，将在下次LLM调用时追加..." 
+                    rows="1"
+                    onkeydown="handleKeyDown(event)"
+                    oninput="autoResize(this)"
+                ></textarea>
+                <button class="send-btn" id="send-btn" onclick="sendUserMessage()">发送</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentRound = null;
+        let currentThreadId = 0;
+        let currentRoundUniqueId = null;
+        let ws = null;
+        let updateInterval = null;
+        let currentRoundData = null;
+        let renderedMessageCount = 0;
+        // 记录展开的工具调用（使用消息索引）
+        let expandedTools = {};
+        // 当前轮次是否默认展开全部工具调用
+        let toolExpandAll = false;
+        // 是否正在显示重大发现
+        let showingFindings = false;
+        // 重大发现数据
+        let findingsData = [];
+
+        // 初始化WebSocket连接
+        function initWebSocket() {
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws`);
+            
+            ws.onopen = function() {
+                console.log('WebSocket connected');
+            };
+            
+            ws.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                if (data.type === 'update') {
+                    fetchRounds();
+                    // 修复：使用 currentRound !== null 替代 if (currentRound) 以支持 thread_id = 0 的情况
+                    if (currentRound !== null && currentRound !== undefined) {
+                        fetchRoundDetail(currentRound, currentThreadId, true);
+                    }
+                    // 更新重大发现徽章数量
+                    if (data.findings_count !== undefined) {
+                        updateFindingBadgeFromCount(data.findings_count);
+                    }
+                }
+            };
+            
+            ws.onclose = function() {
+                console.log('WebSocket disconnected, reconnecting...');
+                setTimeout(initWebSocket, 3000);
+            };
+            
+            ws.onerror = function(error) {
+                console.error('WebSocket error:', error);
+            };
+        }
+
+        // 获取轮次列表
+        async function fetchRounds() {
+            try {
+                const response = await fetch('/api/rounds');
+                const data = await response.json();
+                renderRoundList(data.rounds);
+                // 更新重大发现数量
+                if (data.findings_count !== undefined) {
+                    updateFindingBadgeFromCount(data.findings_count);
+                }
+            } catch (error) {
+                console.error('Failed to fetch rounds:', error);
+            }
+        }
+
+        // 生成轮次唯一ID
+        function getRoundUniqueId(round) {
+            return round.thread_id + '-' + round.round_num;
+        }
+
+        // 检测是否是双线程模式
+        function isDualThreadMode(rounds) {
+            const threadIds = new Set();
+            for (const round of rounds) {
+                if (round.thread_id && round.thread_id > 0) {
+                    threadIds.add(round.thread_id);
+                }
+            }
+            return threadIds.size >= 2;
+        }
+
+        // 渲染单个轮次项
+        function renderRoundItem(round) {
+            const uniqueId = getRoundUniqueId(round);
+            const isActive = currentRoundUniqueId === uniqueId;
+            
+            let html = '<div class="round-item ' + (isActive ? 'active' : '') + '" onclick="selectRound(' + round.round_num + ', ' + round.thread_id + ')">';
+            html += '<div class="round-num">第 ' + round.round_num + ' 轮</div>';
+            html += '<div class="llm-name">🤖 ' + round.llm_name + '</div>';
+            html += '<div class="round-meta">';
+            html += '<span class="status-' + round.status + '">' + getStatusText(round.status) + '</span>';
+            html += '<span>' + round.message_count + ' 条消息</span>';
+            html += '</div>';
+            html += '<div class="round-meta">';
+            html += '<span>开始: ' + round.start_time + '</span>';
+            if (round.end_time) {
+                html += '<span>结束: ' + round.end_time + '</span>';
+            }
+            html += '</div>';
+            html += '</div>';
+            return html;
+        }
+
+        // 渲染轮次列表
+        function renderRoundList(rounds) {
+            const container = document.getElementById('round-list');
+            const countEl = document.getElementById('round-count');
+            
+            // 保存当前滚动位置（单线程模式）
+            const savedScrollTop = container.scrollTop;
+            
+            // 双线程模式下保存各列的滚动位置
+            const threadColumn1 = container.querySelector('.thread-column:nth-child(1) .thread-column-content');
+            const threadColumn2 = container.querySelector('.thread-column:nth-child(2) .thread-column-content');
+            const savedScrollTop1 = threadColumn1 ? threadColumn1.scrollTop : 0;
+            const savedScrollTop2 = threadColumn2 ? threadColumn2.scrollTop : 0;
+            
+            countEl.textContent = '共 ' + rounds.length + ' 轮调用';
+            
+            if (rounds.length === 0) {
+                container.innerHTML = '<div class="empty-state"><p>暂无LLM调用记录</p></div>';
+                return;
+            }
+            
+            // 检测是否是双线程模式
+            const dualThread = isDualThreadMode(rounds);
+            
+            if (dualThread) {
+                // 双线程模式：分两列显示
+                let thread1Rounds = [];
+                let thread2Rounds = [];
+                let otherRounds = [];
+                
+                for (const round of rounds) {
+                    if (round.thread_id === 1) {
+                        thread1Rounds.push(round);
+                    } else if (round.thread_id === 2) {
+                        thread2Rounds.push(round);
+                    } else {
+                        otherRounds.push(round);
+                    }
+                }
+                
+                let html = '<div class="dual-thread-container">';
+                
+                // 线程1列
+                html += '<div class="thread-column">';
+                html += '<div class="thread-column-header thread-1">🟢 线程1</div>';
+                html += '<div class="thread-column-content">';
+                for (const round of thread1Rounds) {
+                    html += renderRoundItem(round);
+                }
+                html += '</div>';
+                html += '</div>';
+                
+                // 线程2列
+                html += '<div class="thread-column">';
+                html += '<div class="thread-column-header thread-2">🔵 线程2</div>';
+                html += '<div class="thread-column-content">';
+                for (const round of thread2Rounds) {
+                    html += renderRoundItem(round);
+                }
+                html += '</div>';
+                html += '</div>';
+                
+                html += '</div>';
+                
+                // 如果有其他线程的轮次（不属于线程1或2），追加在下面
+                if (otherRounds.length > 0) {
+                    html += '<div style="margin-top: 8px;">';
+                    for (const round of otherRounds) {
+                        html += renderRoundItem(round);
+                    }
+                    html += '</div>';
+                }
+                
+                container.innerHTML = html;
+                
+                // 双线程模式：恢复各列的滚动位置
+                const newThreadColumn1 = container.querySelector('.thread-column:nth-child(1) .thread-column-content');
+                const newThreadColumn2 = container.querySelector('.thread-column:nth-child(2) .thread-column-content');
+                if (newThreadColumn1) newThreadColumn1.scrollTop = savedScrollTop1;
+                if (newThreadColumn2) newThreadColumn2.scrollTop = savedScrollTop2;
+            } else {
+                // 单线程模式：原有布局
+                let html = '';
+                for (let i = 0; i < rounds.length; i++) {
+                    const round = rounds[i];
+                    const uniqueId = getRoundUniqueId(round);
+                    const isActive = currentRoundUniqueId === uniqueId;
+                    const threadLabel = round.thread_id > 0 ? '[线程' + round.thread_id + '] ' : '';
+                    
+                    html += '<div class="round-item ' + (isActive ? 'active' : '') + '" onclick="selectRound(' + round.round_num + ', ' + round.thread_id + ')">';
+                    html += '<div class="round-num">' + threadLabel + '第 ' + round.round_num + ' 轮</div>';
+                    html += '<div class="llm-name">🤖 ' + round.llm_name + '</div>';
+                    html += '<div class="round-meta">';
+                    html += '<span class="status-' + round.status + '">' + getStatusText(round.status) + '</span>';
+                    html += '<span>' + round.message_count + ' 条消息</span>';
+                    html += '</div>';
+                    html += '<div class="round-meta">';
+                    html += '<span>开始: ' + round.start_time + '</span>';
+                    if (round.end_time) {
+                        html += '<span>结束: ' + round.end_time + '</span>';
+                    }
+                    html += '</div>';
+                    html += '</div>';
+                }
+                container.innerHTML = html;
+                
+                // 单线程模式：恢复滚动位置
+                container.scrollTop = savedScrollTop;
+            }
+        }
+
+        // 获取状态文本
+        function getStatusText(status) {
+            const statusMap = {
+                'running': '运行中',
+                'completed': '已完成',
+                'error': '出错'
+            };
+            return statusMap[status] || status;
+        }
+
+        // 选择轮次
+        async function selectRound(roundNum, threadId) {
+            // 取消重大发现选中状态
+            showingFindings = false;
+            document.getElementById('major-finding-btn').classList.remove('active');
+            
+            const uniqueId = threadId + '-' + roundNum;
+            
+            if (currentRoundUniqueId !== uniqueId) {
+                currentRound = roundNum;
+                currentThreadId = threadId || 0;
+                currentRoundUniqueId = uniqueId;
+                currentRoundData = null;
+                renderedMessageCount = 0;
+                expandedTools = {};
+                toolExpandAll = false;
+            }
+            
+            await fetchRounds();
+            await fetchRoundDetail(roundNum, threadId, false);
+        }
+
+        // 显示重大发现
+        async function showMajorFindings() {
+            showingFindings = true;
+            currentRound = null;
+            currentRoundUniqueId = null;  // 修复：同时清除 currentRoundUniqueId，确保再次点击轮次时能正确刷新
+            expandedTools = {};
+            toolExpandAll = false;
+            
+            // 更新 UI 状态
+            document.getElementById('major-finding-btn').classList.add('active');
+            
+            // 清除轮次选中状态
+            const roundItems = document.querySelectorAll('.round-item');
+            roundItems.forEach(item => item.classList.remove('active'));
+            
+            // 获取重大发现数据
+            await fetchFindings();
+        }
+
+        // 获取重大发现
+        async function fetchFindings() {
+            try {
+                const response = await fetch('/api/findings');
+                const data = await response.json();
+                findingsData = data.findings || [];
+                updateFindingBadge();
+                renderFindings(findingsData);
+            } catch (error) {
+                console.error('Failed to fetch findings:', error);
+            }
+        }
+
+        // 更新重大发现徽章
+        function updateFindingBadge() {
+            const countEl = document.getElementById('finding-count');
+            const badgeEl = document.getElementById('finding-badge');
+            
+            countEl.textContent = findingsData.length + ' 条记录';
+            
+            if (findingsData.length > 0) {
+                badgeEl.textContent = findingsData.length;
+                badgeEl.style.display = 'block';
+            } else {
+                badgeEl.style.display = 'none';
+            }
+        }
+
+        // 从数量更新重大发现徽章（不重新获取数据）
+        function updateFindingBadgeFromCount(count) {
+            const countEl = document.getElementById('finding-count');
+            const badgeEl = document.getElementById('finding-badge');
+            
+            countEl.textContent = count + ' 条记录';
+            
+            if (count > 0) {
+                badgeEl.textContent = count;
+                badgeEl.style.display = 'block';
+            } else {
+                badgeEl.style.display = 'none';
+            }
+        }
+
+        // 渲染重大发现列表
+        function renderFindings(findings) {
+            const container = document.getElementById('chat-container');
+            const titleEl = document.getElementById('chat-title');
+            const subtitleEl = document.getElementById('chat-subtitle');
+            const statusIndicator = document.getElementById('status-indicator');
+            
+            titleEl.textContent = '💡 重大发现';
+            subtitleEl.textContent = '已获得的重大发现列表';
+            statusIndicator.style.display = 'none';
+            
+            if (!findings || findings.length === 0) {
+                container.innerHTML = '<div class="empty-state"><div class="icon">🔍</div><p>暂无重大发现</p></div>';
+                syncToolBulkToggleButton();
+                return;
+            }
+            
+            let html = '';
+            for (let i = 0; i < findings.length; i++) {
+                const finding = findings[i];
+                html += '<div class="finding-card">';
+                html += '<div class="finding-header">';
+                html += '<div class="finding-title">' + escapeHtml(finding.title) + '</div>';
+                html += '<div class="finding-meta">' + finding.timestamp + '</div>';
+                html += '</div>';
+                html += '<div class="finding-content">' + formatContent(finding.content) + '</div>';
+                html += '<div class="finding-footer">';
+                html += '<div class="finding-tags">';
+                if (finding.round_num && finding.round_num > 0) {
+                    html += '<div class="finding-round-tag">来源: 第 ' + finding.round_num + ' 轮</div>';
+                }
+                if (finding.thread_id && finding.thread_id > 0) {
+                    html += '<div class="finding-thread-tag">线程 ' + finding.thread_id + '</div>';
+                }
+                html += '</div>';
+                // 复制按钮
+                html += '<button class="copy-btn" onclick="copyFindingContent(this, ' + i + ')" title="复制">📋</button>';
+                html += '</div>';
+                html += '</div>';
+            }
+            
+            container.innerHTML = html;
+            syncToolBulkToggleButton();
+        }
+
+        // 复制重大发现内容
+        function copyFindingContent(btn, index) {
+            const finding = findingsData[index];
+            if (!finding || !finding.content) {
+                showNotification('❌ 复制失败：内容为空');
+                return;
+            }
+            
+            // 使用现代 Clipboard API
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(finding.content).then(function() {
+                    // 更新按钮状态
+                    btn.classList.add('copied');
+                    btn.textContent = '✓';
+                    btn.title = '已复制';
+                    
+                    // 1.5秒后恢复按钮状态
+                    setTimeout(function() {
+                        btn.classList.remove('copied');
+                        btn.textContent = '📋';
+                        btn.title = '复制';
+                    }, 1500);
+                    
+                    showNotification('✅ 内容已复制到剪贴板');
+                }).catch(function(err) {
+                    console.error('复制失败:', err);
+                    fallbackCopy(finding.content, btn);
+                });
+            } else {
+                // 降级方案
+                fallbackCopy(finding.content, btn);
+            }
+        }
+
+        // 降级复制方案（兼容旧浏览器）
+        function fallbackCopy(text, btn) {
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.style.position = 'fixed';
+            textarea.style.left = '-9999px';
+            textarea.style.top = '-9999px';
+            document.body.appendChild(textarea);
+            textarea.focus();
+            textarea.select();
+            
+            try {
+                document.execCommand('copy');
+                btn.classList.add('copied');
+                btn.textContent = '✓';
+                btn.title = '已复制';
+                
+                setTimeout(function() {
+                    btn.classList.remove('copied');
+                    btn.textContent = '📋';
+                    btn.title = '复制';
+                }, 1500);
+                
+                showNotification('✅ 内容已复制到剪贴板');
+            } catch (err) {
+                console.error('降级复制失败:', err);
+                showNotification('❌ 复制失败，请手动复制');
+            }
+            
+            document.body.removeChild(textarea);
+        }
+
+        // 获取轮次详情
+        async function fetchRoundDetail(roundNum, threadId, incremental) {
+            try {
+                const response = await fetch('/api/rounds/' + roundNum + '?thread_id=' + (threadId || 0));
+                const data = await response.json();
+                
+                if (incremental && currentRoundData && currentRoundData.round_num === data.round_num && currentRoundData.thread_id === data.thread_id) {
+                    updateChatContent(data);
+                } else {
+                    currentRoundData = data;
+                    renderedMessageCount = 0;
+                    renderChatContent(data);
+                }
+            } catch (error) {
+                console.error('Failed to fetch round detail:', error);
+            }
+        }
+
+        // 检查是否滚动到底部
+        function isScrolledToBottom() {
+            const container = document.getElementById('chat-container');
+            // 允许10px的误差
+            return container.scrollHeight - container.scrollTop - container.clientHeight < 10;
+        }
+        
+        // 滚动到底部
+        function scrollToBottom() {
+            const container = document.getElementById('chat-container');
+            container.scrollTop = container.scrollHeight;
+        }
+
+        // 增量更新聊天内容
+        function updateChatContent(roundData) {
+            const messages = roundData.messages || [];
+            const newMessageCount = messages.length;
+            const container = document.getElementById('chat-container');
+            
+            // 检查状态是否变化（从running变为completed/error）
+            const statusChanged = currentRoundData && 
+                                  currentRoundData.status === 'running' && 
+                                  roundData.status !== 'running';
+            
+            // 消息数量没变化且状态没变化
+            if (newMessageCount === renderedMessageCount && !statusChanged) {
+                updateStatus(roundData.status);
+                return;
+            }
+            
+            // 消息数量减少，重新渲染
+            if (newMessageCount < renderedMessageCount) {
+                currentRoundData = roundData;
+                renderedMessageCount = 0;
+                expandedTools = {};
+                toolExpandAll = false;
+                renderChatContent(roundData);
+                return;
+            }
+            
+            // 在添加新消息前检查是否在底部
+            const wasAtBottom = isScrolledToBottom();
+            
+            if (renderedMessageCount === 0) {
+                container.innerHTML = '';
+            }
+            
+            // 添加新消息
+            for (let i = renderedMessageCount; i < newMessageCount; i++) {
+                const msgHtml = renderMessage(messages[i], i);
+                container.insertAdjacentHTML('beforeend', msgHtml);
+            }
+            
+            // 如果状态变化且有总结，追加总结
+            if (statusChanged && roundData.summary) {
+                const summaryHtml = renderSummary(roundData.summary, roundData.end_time);
+                container.insertAdjacentHTML('beforeend', summaryHtml);
+            }
+            
+            updateStatus(roundData.status);
+            
+            // 只有之前在底部时才自动滚动
+            if (wasAtBottom) {
+                scrollToBottom();
+            }
+            
+            renderedMessageCount = newMessageCount;
+            currentRoundData = roundData;
+            syncToolBulkToggleButton();
+        }
+
+        // 更新状态指示器
+        function updateStatus(status) {
+            const statusIndicator = document.getElementById('status-indicator');
+            const statusDot = document.getElementById('status-dot');
+            const statusText = document.getElementById('status-text');
+            
+            statusIndicator.style.display = 'flex';
+            statusDot.className = 'status-dot ' + status;
+            statusText.textContent = getStatusText(status);
+        }
+
+        // 渲染聊天内容（全量）
+        function renderChatContent(roundData) {
+            const container = document.getElementById('chat-container');
+            const titleEl = document.getElementById('chat-title');
+            const subtitleEl = document.getElementById('chat-subtitle');
+            
+            titleEl.textContent = '💬 第 ' + roundData.round_num + ' 轮对话';
+            subtitleEl.textContent = roundData.llm_name + ' (' + roundData.llm_model + ')';
+            
+            updateStatus(roundData.status);
+            
+            if (!roundData.messages || roundData.messages.length === 0) {
+                container.innerHTML = '<div class="empty-state"><div class="icon">💬</div><p>等待消息...</p><div class="loading-dots"><span></span><span></span><span></span></div></div>';
+                renderedMessageCount = 0;
+                syncToolBulkToggleButton();
+                return;
+            }
+            
+            let html = '';
+            for (let i = 0; i < roundData.messages.length; i++) {
+                html += renderMessage(roundData.messages[i], i);
+            }
+            
+            // 如果有总结，追加到消息列表末尾
+            if (roundData.summary && roundData.status !== 'running') {
+                html += renderSummary(roundData.summary, roundData.end_time);
+            }
+            
+            container.innerHTML = html;
+            renderedMessageCount = roundData.messages.length;
+            syncToolBulkToggleButton();
+            
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function isToolExpanded(index) {
+            if (toolExpandAll) {
+                return expandedTools[index] !== false;
+            }
+            return expandedTools[index] === true;
+        }
+
+        function setToolExpandedPreference(index, expand) {
+            if (toolExpandAll) {
+                if (expand) {
+                    delete expandedTools[index];
+                } else {
+                    expandedTools[index] = false;
+                }
+                return;
+            }
+
+            if (expand) {
+                expandedTools[index] = true;
+            } else {
+                delete expandedTools[index];
+            }
+        }
+
+        function getToolArgsSections() {
+            return Array.from(document.querySelectorAll('#chat-container .tool-call .tool-args-section'));
+        }
+
+        function syncToolBulkToggleButton() {
+            const btn = document.getElementById('tool-bulk-toggle-btn');
+            if (!btn) return;
+
+            const sections = getToolArgsSections();
+            const hasTools = sections.length > 0;
+            const allExpanded = hasTools && sections.every(section => section.classList.contains('show'));
+
+            btn.disabled = !hasTools;
+            btn.textContent = allExpanded ? '📁' : '📂';
+            btn.title = hasTools
+                ? (allExpanded ? '折叠当前右侧区域全部工具调用' : '展开当前右侧区域全部工具调用')
+                : '当前内容没有工具调用';
+        }
+
+        function toggleAllToolArgs() {
+            const sections = getToolArgsSections();
+            if (sections.length === 0) {
+                syncToolBulkToggleButton();
+                return;
+            }
+
+            const shouldExpand = sections.some(section => !section.classList.contains('show'));
+            toolExpandAll = shouldExpand;
+            expandedTools = {};
+
+            sections.forEach(section => {
+                section.classList.toggle('show', shouldExpand);
+                const toggle = section.parentElement.querySelector('.tool-toggle');
+                if (toggle) {
+                    toggle.classList.toggle('expanded', shouldExpand);
+                }
+            });
+
+            syncToolBulkToggleButton();
+        }
+
+        // 渲染单条消息
+        function renderMessage(msg, index) {
+            let html = '<div class="message ' + msg.role + '">';
+            html += '<div class="message-header">';
+            html += '<span class="message-role ' + msg.role + '">' + getRoleText(msg.role) + '</span>';
+            html += '<span class="message-time">' + msg.timestamp + '</span>';
+            html += '</div>';
+            
+            // 思考内容
+            if (msg.thinking) {
+                html += '<div class="thinking-block">';
+                html += '<div class="thinking-label">💭 思考过程</div>';
+                html += '<div class="thinking-content">' + escapeHtml(msg.thinking) + '</div>';
+                html += '</div>';
+            }
+            
+        // 先显示文本内容（assistant的文本响应或其他非工具调用消息）
+        // 普通消息内容（非工具调用）
+        if (msg.content && !msg.tool_name) {
+            html += '<div class="message-content">' + formatContent(msg.content) + '</div>';
+        }
+        
+        // assistant消息同时有tool_name和content时，content先显示（不折叠）
+        if (msg.role === 'assistant' && msg.tool_name && msg.content) {
+            html += '<div class="message-content">' + formatContent(msg.content) + '</div>';
+        }
+        
+        // 然后显示工具调用（assistant发起的工具调用请求）- 只有tool_call部分折叠
+        if (msg.tool_name && msg.role === 'assistant') {
+            const toolId = 'tool-' + index;
+            const isExpanded = isToolExpanded(index);
+            
+            html += '<div class="tool-call">';
+            // 工具名称头部 - 可点击展开/折叠
+            html += '<div class="tool-header" onclick="toggleToolArgs(' + index + ')">';
+            html += '<div class="tool-header-left">';
+            html += '<span class="tool-icon">🔧</span>';
+            html += '<span class="tool-name">' + escapeHtml(msg.tool_name) + '</span>';
+            html += '</div>';
+            html += '<span class="tool-toggle' + (isExpanded ? ' expanded' : '') + '" id="' + toolId + '-toggle">▼</span>';
+            html += '</div>';
+            
+            // 参数部分 - 默认折叠
+            html += '<div class="tool-args-section' + (isExpanded ? ' show' : '') + '" id="' + toolId + '-args">';
+            if (msg.tool_args) {
+                html += '<div class="tool-label">参数:</div>';
+                html += '<div class="tool-args">' + escapeHtml(JSON.stringify(msg.tool_args, null, 2)) + '</div>';
+            }
+            html += '</div>';
+            html += '</div>';
+        }
+        
+        // 工具响应（role='tool'）- 显示在右边，内容可折叠
+        if (msg.role === 'tool' && msg.tool_name) {
+            const toolId = 'tool-result-' + index;
+            const isExpanded = isToolExpanded('result-' + index);
+            
+            html += '<div class="tool-call">';
+            html += '<div class="tool-header" onclick="toggleToolArgs(\'result-' + index + '\')">';
+            html += '<div class="tool-header-left">';
+            html += '<span class="tool-icon">📋</span>';
+            html += '<span class="tool-name">' + escapeHtml(msg.tool_name) + ' 返回结果</span>';
+            html += '</div>';
+            html += '<span class="tool-toggle' + (isExpanded ? ' expanded' : '') + '" id="' + toolId + '-toggle">▼</span>';
+            html += '</div>';
+            
+            // 结果部分 - 默认折叠
+            html += '<div class="tool-args-section' + (isExpanded ? ' show' : '') + '" id="' + toolId + '-args">';
+            if (msg.content) {
+                html += '<div class="tool-result-content">' + formatContent(msg.content) + '</div>';
+            }
+            html += '</div>';
+            html += '</div>';
+        }
+            
+            html += '</div>';
+            return html;
+        }
+
+        // 切换工具参数展开/折叠
+        function toggleToolArgs(index) {
+            // 支持两种格式的index：数字(工具调用) 或 'result-{数字}'(工具返回)
+            const toolId = 'tool-' + index;
+            const argsSection = document.getElementById(toolId + '-args');
+            const toggle = document.getElementById(toolId + '-toggle');
+            
+            if (argsSection && toggle) {
+                const isCurrentlyExpanded = argsSection.classList.contains('show');
+                
+                if (isCurrentlyExpanded) {
+                    argsSection.classList.remove('show');
+                    toggle.classList.remove('expanded');
+                    setToolExpandedPreference(index, false);
+                } else {
+                    argsSection.classList.add('show');
+                    toggle.classList.add('expanded');
+                    setToolExpandedPreference(index, true);
+                }
+
+                syncToolBulkToggleButton();
+            }
+        }
+
+        // 获取角色文本
+        function getRoleText(role) {
+            const roleMap = {
+                'user': '👤 用户',
+                'assistant': '🤖 助手',
+                'tool': '🔧 工具',
+                'system': '⚙️ 系统'
+            };
+            return roleMap[role] || role;
+        }
+
+        // 转义HTML
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // 格式化内容（处理代码块等）
+        function formatContent(content) {
+            if (!content) return '';
+            
+            let formatted = escapeHtml(content);
+            
+            formatted = formatted.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code class="language-$1">$2</code></pre>');
+            formatted = formatted.replace(/`([^`]+)`/g, '<code>$1</code>');
+            
+            return formatted;
+        }
+
+        // 渲染总结消息
+        function renderSummary(summary, endTime) {
+            let html = '<div class="summary-message">';
+            html += '<div class="summary-header">';
+            html += '<span class="summary-label">📝 本轮总结</span>';
+            html += '</div>';
+            html += '<div class="summary-content">' + formatContent(summary) + '</div>';
+            if (endTime) {
+                html += '<div class="summary-time">完成时间: ' + endTime + '</div>';
+            }
+            html += '</div>';
+            return html;
+        }
+
+        // 初始化
+        function init() {
+            initWebSocket();
+            fetchRounds();
+            fetchFindings(); // 初始化时加载重大发现数量
+            syncToolBulkToggleButton();
+            
+        // 定时刷新（每秒）
+        updateInterval = setInterval(function() {
+            fetchRounds();
+            // 修复：使用 currentRound !== null 替代 if (currentRound) 以支持 thread_id = 0 的情况
+            if (currentRound !== null && currentRound !== undefined) {
+                fetchRoundDetail(currentRound, currentThreadId, true);
+            }
+            // 如果正在显示重大发现，也刷新重大发现
+            if (showingFindings) {
+                fetchFindings();
+            }
+        }, 1000);
+        }
+
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', init);
+        
+        // 页面卸载时清理
+        window.addEventListener('beforeunload', function() {
+            if (ws) ws.close();
+            if (updateInterval) clearInterval(updateInterval);
+        });
+
+        // ========== 用户消息发送功能 ==========
+        
+        // 是否有待发送的消息
+        let hasPendingMessage = false;
+        // 待发送消息的目标线程ID
+        let pendingMessageThreadId = 0;
+
+        // 自动调整输入框高度
+        function autoResize(textarea) {
+            textarea.style.height = 'auto';
+            textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+        }
+
+        // 处理键盘事件
+        function handleKeyDown(event) {
+            // Ctrl+Enter 或 Cmd+Enter 发送消息
+            if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+                event.preventDefault();
+                sendUserMessage();
+            }
+            // 单独 Enter 键也发送（不含 shift）
+            else if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendUserMessage();
+            }
+        }
+
+        // 发送用户消息
+        async function sendUserMessage() {
+            const input = document.getElementById('user-input');
+            const sendBtn = document.getElementById('send-btn');
+            const message = input.value.trim();
+            
+            if (!message) {
+                return;
+            }
+            
+            // 确定目标线程ID
+            // 如果正在显示重大发现，则不允许发送
+            if (showingFindings) {
+                showNotification('❌ 请先选择一个轮次再发送消息');
+                return;
+            }
+            
+            // 使用当前选中的线程ID
+            const targetThreadId = currentThreadId || 0;
+            
+            // 禁用发送按钮
+            sendBtn.disabled = true;
+            sendBtn.textContent = '发送中...';
+            
+            try {
+                const response = await fetch('/api/human-message', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ 
+                        message: message,
+                        thread_id: targetThreadId
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    // 清空输入框
+                    input.value = '';
+                    autoResize(input);
+                    
+                    // 显示待发送指示器
+                    hasPendingMessage = true;
+                    pendingMessageThreadId = targetThreadId;
+                    updatePendingIndicator();
+                    
+                    // 显示提示消息
+                    const threadLabel = targetThreadId > 0 ? '线程' + targetThreadId : '当前线程';
+                    showNotification('✅ 消息已设置，将在下次 [' + threadLabel + '] LLM调用时追加');
+                } else {
+                    showNotification('❌ 发送失败: ' + (data.error || '未知错误'));
+                }
+            } catch (error) {
+                console.error('Failed to send message:', error);
+                showNotification('❌ 发送失败，请检查网络连接');
+            } finally {
+                // 恢复发送按钮
+                sendBtn.disabled = false;
+                sendBtn.textContent = '发送';
+            }
+        }
+
+        // 更新待发送消息指示器
+        function updatePendingIndicator() {
+            const indicator = document.getElementById('pending-indicator');
+            if (hasPendingMessage) {
+                indicator.classList.add('show');
+            } else {
+                indicator.classList.remove('show');
+            }
+        }
+
+        // 检查待发送消息状态
+        async function checkPendingMessageStatus() {
+            try {
+                const response = await fetch('/api/human-message/status');
+                const data = await response.json();
+                
+                // 如果之前有待发送消息，但现在没有了，说明已被LLM处理
+                if (hasPendingMessage && !data.has_pending_message) {
+                    hasPendingMessage = false;
+                    updatePendingIndicator();
+                    showNotification('📬 您的消息已追加到LLM对话中');
+                } else if (data.has_pending_message) {
+                    hasPendingMessage = true;
+                    updatePendingIndicator();
+                }
+            } catch (error) {
+                console.error('Failed to check pending message status:', error);
+            }
+        }
+
+        // 显示通知消息
+        function showNotification(message) {
+            // 创建通知元素
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                bottom: 80px;
+                left: 50%;
+                transform: translateX(-50%);
+                background-color: rgba(0, 0, 0, 0.8);
+                color: white;
+                padding: 10px 20px;
+                border-radius: 8px;
+                font-size: 14px;
+                z-index: 1000;
+                animation: fadeInOut 3s ease-in-out;
+            `;
+            notification.textContent = message;
+            
+            // 添加动画样式
+            const style = document.createElement('style');
+            style.textContent = `
+                @keyframes fadeInOut {
+                    0% { opacity: 0; transform: translateX(-50%) translateY(20px); }
+                    15% { opacity: 1; transform: translateX(-50%) translateY(0); }
+                    85% { opacity: 1; transform: translateX(-50%) translateY(0); }
+                    100% { opacity: 0; transform: translateX(-50%) translateY(-20px); }
+                }
+            `;
+            document.head.appendChild(style);
+            document.body.appendChild(notification);
+            
+            // 3秒后移除
+            setTimeout(() => {
+                notification.remove();
+                style.remove();
+            }, 3000);
+        }
+
+        // 每2秒检查待发送消息状态
+        setInterval(checkPendingMessageStatus, 2000);
+
+        // ========== 暗黑模式切换功能 ==========
+        
+        // 当前主题
+        let currentTheme = localStorage.getItem('theme') || 'light';
+
+        // 初始化主题
+        function initTheme() {
+            if (currentTheme === 'dark') {
+                document.documentElement.setAttribute('data-theme', 'dark');
+                updateThemeButton(true);
+            }
+        }
+
+        // 切换主题
+        function toggleTheme() {
+            const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+            
+            if (isDark) {
+                document.documentElement.removeAttribute('data-theme');
+                localStorage.setItem('theme', 'light');
+                currentTheme = 'light';
+                updateThemeButton(false);
+            } else {
+                document.documentElement.setAttribute('data-theme', 'dark');
+                localStorage.setItem('theme', 'dark');
+                currentTheme = 'dark';
+                updateThemeButton(true);
+            }
+        }
+
+        // 更新主题按钮图标
+        function updateThemeButton(isDark) {
+            const btn = document.getElementById('theme-toggle-btn');
+            if (btn) {
+                btn.textContent = isDark ? '☀️' : '🌙';
+                btn.title = isDark ? '切换亮色模式' : '切换暗黑模式';
+            }
+        }
+
+        // 页面加载时初始化主题
+        initTheme();
+
+        // ========== 版本号显示 ==========
+
+        // 获取版本号
+        async function fetchVersion() {
+            try {
+                const response = await fetch('/api/version');
+                const data = await response.json();
+                updateVersionDisplay(data.version);
+            } catch (error) {
+                console.error('Failed to fetch version:', error);
+            }
+        }
+
+        // 更新版本号显示
+        function updateVersionDisplay(version) {
+            const subtitleEl = document.getElementById('logo-subtitle');
+            if (subtitleEl) {
+                subtitleEl.textContent = `v${version} - 结队解题YES!`;
+            }
+        }
+
+        // ========== 功能状态展示 ==========
+
+        // 获取功能启用状态
+        async function fetchFeatureStatus() {
+            try {
+                const response = await fetch('/api/feature-status');
+                const data = await response.json();
+                renderFeatureTags(data);
+            } catch (error) {
+                console.error('Failed to fetch feature status:', error);
+            }
+        }
+
+        // 渲染功能状态标签
+        function renderFeatureTags(status) {
+            const container = document.getElementById('feature-tags');
+            if (!container) return;
+
+            const features = [
+                { key: 'ida_enabled', name: 'IDA', icon: '🔍' },
+                { key: 'jadx_enabled', name: 'JADX', icon: '📱' },
+                { key: 'rag_enabled', name: 'RAG', icon: '📚' },
+                { key: 'skills', name: 'SKILL', icon: '🎯', count: status.skills_count || 0 }
+            ];
+
+            let html = '';
+            for (const feature of features) {
+                if (feature.key === 'skills') {
+                    // SKILL 标签特殊处理：始终显示，显示数量
+                    html += `<div class="feature-tag enabled" title="Skills: ${feature.count} 个可用">`;
+                    html += `<span class="tag-icon">${feature.icon}</span>`;
+                    html += `<span class="tag-text">SKILL: ${feature.count}</span>`;
+                    html += `</div>`;
+                } else {
+                    const isEnabled = status[feature.key];
+                    const stateClass = isEnabled ? 'enabled' : 'disabled';
+                    html += `<div class="feature-tag ${stateClass}" title="${feature.name}: ${isEnabled ? '已启用' : '未启用'}">`;
+                    html += `<span class="tag-icon">${feature.icon}</span>`;
+                    html += `<span class="tag-text">${feature.name}</span>`;
+                    html += `</div>`;
+                }
+            }
+            container.innerHTML = html;
+        }
+
+        // 页面加载时获取功能状态和版本号
+        fetchFeatureStatus();
+        fetchVersion();
+    </script>
+</body>
+</html>
