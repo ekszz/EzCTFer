@@ -224,23 +224,11 @@ def run_dual_thread_solve(
     # 等待完成
     result1, result2 = manager.wait_for_completion()
     
-    # 返回结果
-    # 只有当 flag 非空时才输出成功信息
+    # 返回结果，由 CLI 顶层统一输出最终成功或失败提示
     if result1[0] and result1[1]:
-        log_separator()
-        log_info("🎉 线程1成功找到FLAG!")
-        log_info(f"🚩 Flag: {result1[1]}")
-        log_separator()
         return result1
     elif result2[0] and result2[1]:
-        log_separator()
-        log_info("🎉 线程2成功找到FLAG!")
-        log_info(f"🚩 Flag: {result2[1]}")
-        log_separator()
         return result2
     else:
-        log_separator()
-        log_warning("两个线程都未能找到flag")
-        log_separator()
         # 返回线程1的结果（或可以合并两个结果）
         return result1

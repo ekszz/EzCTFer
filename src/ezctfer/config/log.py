@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import builtins
 import os
+import re
+import shutil
 import sys
 import threading
 from dataclasses import dataclass
+from wcwidth import wcwidth
 
 
 class Colors:
@@ -35,6 +38,7 @@ THREAD_EMOJIS = {
 _ERASE_LINE = "\033[2K"
 _CURSOR_UP = "\033[1A"
 _CARRIAGE_RETURN = "\r"
+_ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
 _console_lock = threading.RLock()
 _prompt_condition = threading.Condition(_console_lock)
@@ -85,6 +89,50 @@ def _write_raw(text: str) -> None:
     sys.stdout.flush()
 
 
+def _strip_ansi(text: str) -> str:
+    return _ANSI_ESCAPE_RE.sub("", text)
+
+
+def _char_display_width(char: str) -> int:
+    if char in ("\n", "\r"):
+        return 0
+    if char == "\t":
+        return 4
+
+    width = wcwidth(char)
+    return 0 if width < 0 else width
+
+
+def _text_display_width(text: str) -> int:
+    return sum(_char_display_width(char) for char in _strip_ansi(text))
+
+
+def _terminal_columns() -> int:
+    return max(1, shutil.get_terminal_size(fallback=(80, 24)).columns)
+
+
+def _visual_line_count(text: str, columns: int) -> int:
+    logical_lines = text.splitlines() or [""]
+    visual_lines = 0
+
+    for line in logical_lines:
+        width = _text_display_width(line)
+        visual_lines += max(1, ((max(width, 1) - 1) // columns) + 1)
+
+    return visual_lines
+
+
+def _prompt_visual_lines(state: _PromptState) -> int:
+    columns = _terminal_columns()
+    visual_lines = 0
+
+    for line in state.header_lines:
+        visual_lines += _visual_line_count(line, columns)
+
+    visual_lines += _visual_line_count(f"{state.prompt}{state.buffer}", columns)
+    return visual_lines
+
+
 def _get_thread_prefix(thread_id: int = 0) -> str:
     if thread_id > 0:
         return f"{THREAD_EMOJIS.get(thread_id, str(thread_id))} "
@@ -102,10 +150,9 @@ def _clear_prompt_locked() -> None:
         return
 
     rendered_lines = _active_prompt.rendered_lines
-    for index in range(rendered_lines):
-        _write_raw(f"{_CARRIAGE_RETURN}{_ERASE_LINE}")
-        if index < rendered_lines - 1:
-            _write_raw(_CURSOR_UP)
+    _write_raw(f"{_CARRIAGE_RETURN}{_ERASE_LINE}")
+    for _ in range(rendered_lines - 1):
+        _write_raw(f"{_CURSOR_UP}{_CARRIAGE_RETURN}{_ERASE_LINE}")
     _write_raw(_CARRIAGE_RETURN)
     _active_prompt.rendered_lines = 0
 
@@ -115,11 +162,10 @@ def _render_prompt_locked() -> None:
         return
 
     state = _active_prompt
-    _write_raw("\n")
     for line in state.header_lines:
         _write_raw(f"{state.style}{line}{state.reset_style}\n")
     _write_raw(f"{state.style}{state.prompt}{state.buffer}{state.reset_style}")
-    state.rendered_lines = len(state.header_lines) + 1
+    state.rendered_lines = _prompt_visual_lines(state)
 
 
 def _read_prompt_char() -> str:
@@ -174,7 +220,7 @@ def prompt_input(
     if not sys.stdin.isatty() or not sys.stdout.isatty():
         for line in header_lines:
             console_print(f"{style}{line}{reset_style}")
-        return builtins.input(f"{style}{prompt}")
+        return builtins.input(f"{style}{prompt}{reset_style}")
 
     with _prompt_condition:
         while _active_prompt is not None:
@@ -239,7 +285,7 @@ def prompt_wait_key(
     if not sys.stdin.isatty() or not sys.stdout.isatty():
         for line in header_lines:
             console_print(f"{style}{line}{reset_style}")
-        return builtins.input(f"{style}{prompt}")
+        return builtins.input(f"{style}{prompt}{reset_style}")
 
     with _prompt_condition:
         while _active_prompt is not None:

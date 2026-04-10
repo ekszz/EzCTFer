@@ -382,6 +382,10 @@
             color: #ffb74d;
         }
 
+        [data-theme="dark"] .tool-call-id {
+            color: #9e9e9e;
+        }
+
         [data-theme="dark"] .tool-toggle {
             color: #707070;
         }
@@ -1190,6 +1194,15 @@
             font-weight: 600;
             color: #e65100;
             font-size: 13px;
+        }
+
+        .tool-call-id {
+            margin-left: 8px;
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--text-muted);
+            opacity: 0.9;
+            font-family: var(--font-mono);
         }
 
         .tool-toggle {
@@ -2635,7 +2648,8 @@
             
             // 添加新消息
             for (let i = renderedMessageCount; i < newMessageCount; i++) {
-                const msgHtml = renderMessage(messages[i], i);
+                const prevMsg = i > 0 ? messages[i - 1] : null;
+                const msgHtml = renderMessage(messages[i], i, prevMsg);
                 container.insertAdjacentHTML('beforeend', msgHtml);
             }
             
@@ -2688,7 +2702,8 @@
             
             let html = '';
             for (let i = 0; i < roundData.messages.length; i++) {
-                html += renderMessage(roundData.messages[i], i);
+                const prevMsg = i > 0 ? roundData.messages[i - 1] : null;
+                html += renderMessage(roundData.messages[i], i, prevMsg);
             }
             
             // 如果有总结，追加到消息列表末尾
@@ -2746,6 +2761,44 @@
                 : '当前内容没有工具调用';
         }
 
+        function getAssistantToolCalls(msg) {
+            if (!msg || msg.role !== 'assistant') {
+                return [];
+            }
+
+            if (Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
+                return msg.tool_calls;
+            }
+
+            return [];
+        }
+
+        function getToolResults(msg) {
+            if (!msg || msg.role !== 'tool') {
+                return [];
+            }
+
+            if (Array.isArray(msg.tool_results) && msg.tool_results.length > 0) {
+                return msg.tool_results;
+            }
+
+            return [];
+        }
+
+        function renderToolTitle(name, callId, suffix) {
+            let html = '<span class="tool-name">' + escapeHtml(name || 'unknown');
+            if (suffix) {
+                html += escapeHtml(suffix);
+            }
+            html += '</span>';
+
+            if (callId) {
+                html += '<span class="tool-call-id">· ' + escapeHtml(callId) + '</span>';
+            }
+
+            return html;
+        }
+
         function toggleAllToolArgs() {
             const sections = getToolArgsSections();
             if (sections.length === 0) {
@@ -2769,12 +2822,17 @@
         }
 
         // 渲染单条消息
-        function renderMessage(msg, index) {
+        function renderMessage(msg, index, prevMsg) {
+            const assistantToolCalls = getAssistantToolCalls(msg);
+            const toolResults = getToolResults(msg);
+            const showHeader = !(msg.role === 'tool' && prevMsg && prevMsg.role === 'tool');
             let html = '<div class="message ' + msg.role + '">';
-            html += '<div class="message-header">';
-            html += '<span class="message-role ' + msg.role + '">' + getRoleText(msg.role) + '</span>';
-            html += '<span class="message-time">' + msg.timestamp + '</span>';
-            html += '</div>';
+            if (showHeader) {
+                html += '<div class="message-header">';
+                html += '<span class="message-role ' + msg.role + '">' + getRoleText(msg.role) + '</span>';
+                html += '<span class="message-time">' + msg.timestamp + '</span>';
+                html += '</div>';
+            }
             
             // 思考内容
             if (msg.thinking) {
@@ -2786,61 +2844,64 @@
             
         // 先显示文本内容（assistant的文本响应或其他非工具调用消息）
         // 普通消息内容（非工具调用）
-        if (msg.content && !msg.tool_name) {
+        if (msg.content && assistantToolCalls.length === 0 && toolResults.length === 0) {
             html += '<div class="message-content">' + formatContent(msg.content) + '</div>';
         }
         
         // assistant消息同时有tool_name和content时，content先显示（不折叠）
-        if (msg.role === 'assistant' && msg.tool_name && msg.content) {
+        if (msg.role === 'assistant' && assistantToolCalls.length > 0 && msg.content) {
             html += '<div class="message-content">' + formatContent(msg.content) + '</div>';
         }
         
         // 然后显示工具调用（assistant发起的工具调用请求）- 只有tool_call部分折叠
-        if (msg.tool_name && msg.role === 'assistant') {
-            const toolId = 'tool-' + index;
-            const isExpanded = isToolExpanded(index);
-            
-            html += '<div class="tool-call">';
-            // 工具名称头部 - 可点击展开/折叠
-            html += '<div class="tool-header" onclick="toggleToolArgs(' + index + ')">';
-            html += '<div class="tool-header-left">';
-            html += '<span class="tool-icon">🔧</span>';
-            html += '<span class="tool-name">' + escapeHtml(msg.tool_name) + '</span>';
-            html += '</div>';
-            html += '<span class="tool-toggle' + (isExpanded ? ' expanded' : '') + '" id="' + toolId + '-toggle">▼</span>';
-            html += '</div>';
-            
-            // 参数部分 - 默认折叠
-            html += '<div class="tool-args-section' + (isExpanded ? ' show' : '') + '" id="' + toolId + '-args">';
-            if (msg.tool_args) {
-                html += '<div class="tool-label">参数:</div>';
-                html += '<div class="tool-args">' + escapeHtml(JSON.stringify(msg.tool_args, null, 2)) + '</div>';
-            }
-            html += '</div>';
-            html += '</div>';
+        if (assistantToolCalls.length > 0) {
+            assistantToolCalls.forEach(function(toolCall, toolIndex) {
+                const toolKey = index + '-call-' + toolIndex;
+                const toolId = 'tool-' + toolKey;
+                const isExpanded = isToolExpanded(toolKey);
+
+                html += '<div class="tool-call">';
+                html += '<div class="tool-header" onclick="toggleToolArgs(\'' + toolKey + '\')">';
+                html += '<div class="tool-header-left">';
+                html += '<span class="tool-icon">🔧</span>';
+                html += renderToolTitle(toolCall.name, toolCall.call_id, '');
+                html += '</div>';
+                html += '<span class="tool-toggle' + (isExpanded ? ' expanded' : '') + '" id="' + toolId + '-toggle">▼</span>';
+                html += '</div>';
+
+                html += '<div class="tool-args-section' + (isExpanded ? ' show' : '') + '" id="' + toolId + '-args">';
+                if (toolCall.args) {
+                    html += '<div class="tool-label">参数:</div>';
+                    html += '<div class="tool-args">' + escapeHtml(JSON.stringify(toolCall.args, null, 2)) + '</div>';
+                }
+                html += '</div>';
+                html += '</div>';
+            });
         }
         
         // 工具响应（role='tool'）- 显示在右边，内容可折叠
-        if (msg.role === 'tool' && msg.tool_name) {
-            const toolId = 'tool-result-' + index;
-            const isExpanded = isToolExpanded('result-' + index);
-            
-            html += '<div class="tool-call">';
-            html += '<div class="tool-header" onclick="toggleToolArgs(\'result-' + index + '\')">';
-            html += '<div class="tool-header-left">';
-            html += '<span class="tool-icon">📋</span>';
-            html += '<span class="tool-name">' + escapeHtml(msg.tool_name) + ' 返回结果</span>';
-            html += '</div>';
-            html += '<span class="tool-toggle' + (isExpanded ? ' expanded' : '') + '" id="' + toolId + '-toggle">▼</span>';
-            html += '</div>';
-            
-            // 结果部分 - 默认折叠
-            html += '<div class="tool-args-section' + (isExpanded ? ' show' : '') + '" id="' + toolId + '-args">';
-            if (msg.content) {
-                html += '<div class="tool-result-content">' + formatContent(msg.content) + '</div>';
-            }
-            html += '</div>';
-            html += '</div>';
+        if (toolResults.length > 0) {
+            toolResults.forEach(function(toolResult, toolIndex) {
+                const toolKey = 'result-' + index + '-' + toolIndex;
+                const toolId = 'tool-' + toolKey;
+                const isExpanded = isToolExpanded(toolKey);
+
+                html += '<div class="tool-call">';
+                html += '<div class="tool-header" onclick="toggleToolArgs(\'' + toolKey + '\')">';
+                html += '<div class="tool-header-left">';
+                html += '<span class="tool-icon">📋</span>';
+                html += renderToolTitle(toolResult.name, toolResult.call_id, ' 返回结果');
+                html += '</div>';
+                html += '<span class="tool-toggle' + (isExpanded ? ' expanded' : '') + '" id="' + toolId + '-toggle">▼</span>';
+                html += '</div>';
+
+                html += '<div class="tool-args-section' + (isExpanded ? ' show' : '') + '" id="' + toolId + '-args">';
+                if (toolResult.content) {
+                    html += '<div class="tool-result-content">' + formatContent(toolResult.content) + '</div>';
+                }
+                html += '</div>';
+                html += '</div>';
+            });
         }
             
             html += '</div>';

@@ -18,6 +18,8 @@ class ChatMessage:
     timestamp: str = field(default_factory=lambda: datetime.now().strftime("%H:%M:%S"))
     tool_name: str | None = None  # 工具名称（如果是工具调用）
     tool_args: dict | None = None  # 工具参数
+    tool_calls: list[dict[str, Any]] | None = None  # 多个工具调用（assistant消息）
+    tool_results: list[dict[str, Any]] | None = None  # 多个工具结果（tool消息）
     thinking: str | None = None  # 思考内容
     thread_id: int = 0  # 线程ID（用于区分双线程模式下的不同线程）
 
@@ -176,6 +178,8 @@ class LLMMonitor:
                     "timestamp": m.timestamp,
                     "tool_name": m.tool_name,
                     "tool_args": m.tool_args,
+                    "tool_calls": m.tool_calls,
+                    "tool_results": m.tool_results,
                     "thinking": m.thinking,
                     "thread_id": m.thread_id
                 }

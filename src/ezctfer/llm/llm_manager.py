@@ -312,11 +312,13 @@ class LLMManager:
                     "api_key": config.api_key,
                     "base_url": config.api_url,
                     "timeout": config.timeout,
+                    "max_retries": DEFAULT_MAX_RETRIES,
                     # 设置自定义 User-Agent
                     "default_headers": {"User-Agent": CLAUDE_USER_AGENT},
-                    # 配置带重试的 httpx 客户端
-                    "httpx_client": http_client,
-                    "httpx_async_client": async_http_client,
+                    # langchain_deepseek 继承自 BaseChatOpenAI，这里要传
+                    # http_client / http_async_client 才会真正接入自定义重试客户端。
+                    "http_client": http_client,
+                    "http_async_client": async_http_client,
                 },
                 config.extra,
             )

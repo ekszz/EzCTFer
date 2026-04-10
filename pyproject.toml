@@ -22,6 +22,7 @@ dependencies = [
     "websockets>=14.0",
     "httpx>=0.25.0",
     "psutil>=5.9.0",
+    "wcwidth>=0.2.0",
     "idapro==0.0.7",
     "langchain-deepseek>=1.0.1",
     "ida_pro_mcp==1.4.0",

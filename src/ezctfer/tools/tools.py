@@ -58,6 +58,7 @@ _no_writeup: bool = False
 
 _SANDBOX_VENV_DIR = Path(__file__).resolve().parents[3] / "sandbox"
 _PROMPT_STYLE = f"{Colors.WHITE_BG}{Colors.BLACK}"
+_HTTP_RESPONSE_PREVIEW_LIMIT = 10 * 1024
 
 
 def _decode_process_output(output: Optional[bytes]) -> str:
@@ -87,6 +88,18 @@ def _format_process_result(result: subprocess.CompletedProcess) -> str:
         output_parts.append(f"Return code: {result.returncode}")
 
     return "\n".join(output_parts) if output_parts else "Command executed successfully with no output"
+
+
+def _truncate_text_with_size_notice(text: str, byte_limit: int) -> str:
+    encoded = text.encode("utf-8")
+    total_bytes = len(encoded)
+    if total_bytes <= byte_limit:
+        return text
+
+    # Decode after byte slicing to avoid introducing broken multibyte characters.
+    preview = encoded[:byte_limit].decode("utf-8", errors="ignore")
+    notice = f"\n[Truncated to 10 KB; full response size: {total_bytes} bytes.]"
+    return f"{preview}{notice}"
 
 
 def _get_sandbox_python_path() -> Path:
@@ -525,7 +538,7 @@ def http_request(url: str, method: str = "GET", headers: str = "", body: str = "
         if response.content:
             output_lines.append(response.text)
         
-        return "\n".join(output_lines)
+        return _truncate_text_with_size_notice("\n".join(output_lines), _HTTP_RESPONSE_PREVIEW_LIMIT)
     
     except requests.exceptions.Timeout:
         return "Error: HTTP request timed out"
@@ -714,7 +727,7 @@ def submit_flag(flag: str) -> str:
 
         raise FlagFoundException(flag)
 
-    header_lines: list[str] = []
+    header_lines: list[str] = [""]
 
     while True:
         try:

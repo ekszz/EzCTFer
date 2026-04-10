@@ -351,7 +351,6 @@ class CTFSolver:
                         # 检查是否找到flag
                         if is_flag_found():
                             flag = get_found_flag()
-                            log_info(f"\n🎉 找到flag: {flag}", self.thread_id)
                             return self._handle_flag_found(llm_instance, all_messages, flag)
                         
                         # 检查是否达到迭代限制
@@ -415,7 +414,6 @@ class CTFSolver:
             # 检查是否找到flag
             if is_flag_found():
                 flag = get_found_flag()
-                log_info(f"\n🎉 找到flag: {flag}", self.thread_id)
                 return self._handle_flag_found(llm_instance, all_messages, flag)
             
             # 请求总结
@@ -428,7 +426,6 @@ class CTFSolver:
             
         except FlagFoundException as e:
             # 捕获FlagFoundException，表示找到了flag，正常返回
-            log_info(f"\n🎉 检测到Flag提交，停止Agent执行", self.thread_id)
             flag = e.flag
             return self._handle_flag_found(llm_instance, all_messages, flag)
             
@@ -468,7 +465,7 @@ class CTFSolver:
             try:
                 thread_label = f"Thread {self.thread_id}" if self.thread_id else "Thread 0"
                 user_input = prompt_input(
-                    [],
+                    [""],
                     f"🔄 Generate {thread_label} Writeup? | Enter y (confirm) / n (reject): ",
                     style=_PROMPT_STYLE,
                 ).strip().lower()
@@ -506,6 +503,14 @@ class CTFSolver:
             # 获取消息列表
             messages = node_data.get("messages", [])
             
+            pending_tool_messages: list[ToolMessage] = []
+
+            def flush_pending_tool_messages() -> None:
+                if not pending_tool_messages:
+                    return
+                self._record_tool_messages_to_monitor(pending_tool_messages, monitor)
+                pending_tool_messages.clear()
+
             for msg in messages:
                 # 使用消息ID来判断是否已处理
                 msg_id = getattr(msg, 'id', None) or id(msg)
@@ -519,19 +524,18 @@ class CTFSolver:
                 
                 # 处理AIMessage
                 if isinstance(msg, AIMessage):
+                    flush_pending_tool_messages()
                     self._print_ai_message(msg)
                     # 记录AI消息到监控器
                     self._record_ai_message_to_monitor(msg, monitor)
                 
                 # 处理ToolMessage
                 elif isinstance(msg, ToolMessage):
-                    # 记录工具结果到监控器
-                    monitor.add_message(ChatMessage(
-                        role="tool",
-                        content=str(msg.content)[:2000] if msg.content else "",  # 限制长度
-                        tool_name=getattr(msg, 'name', None),
-                        thread_id=self.thread_id
-                    ))
+                    pending_tool_messages.append(msg)
+                else:
+                    flush_pending_tool_messages()
+
+            flush_pending_tool_messages()
     
     def _extract_text_content(self, content) -> str:
         """
@@ -674,17 +678,21 @@ class CTFSolver:
         
         # 处理工具调用
         if hasattr(msg, 'tool_calls') and msg.tool_calls:
-            for index, tool_call in enumerate(msg.tool_calls):
-                tool_name = tool_call.get('name', 'unknown')
-                tool_args = tool_call.get('args', {})
-                monitor.add_message(ChatMessage(
-                    role="assistant",
-                    content=text_content if index == 0 else "",
-                    tool_name=tool_name,
-                    tool_args=tool_args,
-                    thinking=thinking if index == 0 else None,
-                    thread_id=self.thread_id
-                ))
+            tool_calls = []
+            for tool_call in msg.tool_calls:
+                tool_calls.append({
+                    "name": tool_call.get('name', 'unknown'),
+                    "args": tool_call.get('args', {}),
+                    "call_id": tool_call.get('id'),
+                })
+
+            monitor.add_message(ChatMessage(
+                role="assistant",
+                content=text_content,
+                tool_calls=tool_calls,
+                thinking=thinking,
+                thread_id=self.thread_id
+            ))
         elif text_content or thinking:
             # 普通AI消息
             monitor.add_message(ChatMessage(
@@ -693,6 +701,32 @@ class CTFSolver:
                 thinking=thinking,
                 thread_id=self.thread_id
             ))
+
+    def _record_tool_messages_to_monitor(self, tool_messages: list[ToolMessage], monitor) -> None:
+        """
+        将一组连续的工具结果记录到监控器，合并为单条 tool 消息。
+
+        Args:
+            tool_messages: 连续的 ToolMessage 列表
+            monitor: 监控器实例
+        """
+        if not tool_messages:
+            return
+
+        tool_results = []
+        for msg in tool_messages:
+            tool_results.append({
+                "name": getattr(msg, 'name', None),
+                "content": str(msg.content)[:2000] if msg.content else "",
+                "call_id": getattr(msg, 'tool_call_id', None),
+            })
+
+        monitor.add_message(ChatMessage(
+            role="tool",
+            content="",
+            tool_results=tool_results,
+            thread_id=self.thread_id
+        ))
     
     def _request_summary(self, llm_instance: LLMInstance, messages: list) -> str:
         """
@@ -860,12 +894,6 @@ class CTFSolver:
             # 检查是否找到flag
             if found:
                 flag = get_found_flag()
-                # 只有当 flag 非空时才输出成功信息
-                if flag:
-                    log_separator()
-                    log_info("🎉 成功找到FLAG!")
-                    log_info(f"🚩 Flag: {flag}")
-                    log_separator()
                 return True, flag
             
             # 为下一个LLM准备消息，包含上一轮的总结
@@ -888,11 +916,6 @@ class CTFSolver:
                 current_message = f"""{original_prompt_section}
 之前的分析没有重大发现。{summary_section}
 请尝试继续分析这道题目。"""
-        
-        # 达到最大轮数仍未找到flag
-        log_separator()
-        log_warning("达到最大轮数，未能找到flag")
-        log_separator()
         
         final_summary = self._generate_final_summary()
         return False, final_summary
