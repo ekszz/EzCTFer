@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ezctfer"
-version = "1.0.0"
+version = "1.0.1"
 description = "基于LangChain的多Agent CTF结队解题框架"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
