@@ -2,7 +2,7 @@
 
 基于LangGraph的多LLM CTF解题框架，面向Web、Pwn、Reverse、Crypto、Misc等场景，提供双模型协作“结对解题”、MCP工具扩展、Skills、RAG、HITL(Human in the Loop)和实时Web进度查看能力。
 
-![MONITOR](img/monitor.png)
+![MONITOR](img/monitor.jpg)
 
 ## 核心特性
 
@@ -291,12 +291,12 @@ uv run ezctfer --rag --dual-thread --quiet --jadx
 ## 致谢
 
 - PUA Skill来源于开源项目[pua](https://github.com/tanweai/pua)。
-- 感谢原项目作者提供的实现思路与基础能力。
+- 感谢相关项目作者提供的实现思路与基础能力。
+- 纵有天枢穷尽万象，仍庆幸生而为人，有爱可寻，有未知可探。
 
 ## 免责声明
 
 - 本项目仅面向CTF竞赛辅助解题、研究、学习，禁止任何非法用途。
-
 - 如您在使用本项目的过程中存在任何非法行为，您需自行承担相应后果。
-
 - 除非您已充分阅读、完全理解并接受本协议，否则，请您不要使用本项目。
+- 因大模型的不确定性，建议在容器或虚拟环境中运行。
