@@ -11,3 +11,4 @@ wheels/
 
 # Environment variables (contains secrets)
 .env
+/rag

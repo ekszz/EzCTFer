@@ -58,7 +58,7 @@ _no_writeup: bool = False
 
 _SANDBOX_VENV_DIR = Path(__file__).resolve().parents[3] / "sandbox"
 _PROMPT_STYLE = f"{Colors.WHITE_BG}{Colors.BLACK}"
-_HTTP_RESPONSE_PREVIEW_LIMIT = 10 * 1024
+_HTTP_RESPONSE_PREVIEW_LIMIT_KB = 8
 
 
 def _decode_process_output(output: Optional[bytes]) -> str:
@@ -90,7 +90,8 @@ def _format_process_result(result: subprocess.CompletedProcess) -> str:
     return "\n".join(output_parts) if output_parts else "Command executed successfully with no output"
 
 
-def _truncate_text_with_size_notice(text: str, byte_limit: int) -> str:
+def _truncate_text_with_size_notice(text: str, kb_limit: int) -> str:
+    byte_limit = kb_limit * 1024
     encoded = text.encode("utf-8")
     total_bytes = len(encoded)
     if total_bytes <= byte_limit:
@@ -98,7 +99,7 @@ def _truncate_text_with_size_notice(text: str, byte_limit: int) -> str:
 
     # Decode after byte slicing to avoid introducing broken multibyte characters.
     preview = encoded[:byte_limit].decode("utf-8", errors="ignore")
-    notice = f"\n[Truncated to 10 KB; full response size: {total_bytes} bytes.]"
+    notice = f"\n[Truncated to {kb_limit} KB; full response size: {total_bytes} bytes.]"
     return f"{preview}{notice}"
 
 
@@ -433,20 +434,11 @@ def execute_command(command: str) -> str:
         log_debug(f"🔧 Executing: {command}")
         # Use binary mode to avoid encoding errors, then decode with error handling
         result = subprocess.run(command, shell=True, capture_output=True, timeout=30)
-        
-        # Decode stdout and stderr with error handling for non-UTF-8 characters
-        stdout_text = result.stdout.decode('utf-8', errors='replace') if result.stdout else ""
-        stderr_text = result.stderr.decode('utf-8', errors='replace') if result.stderr else ""
-        
-        output = ""
-        if stdout_text:
-            output += f"STDOUT:\n{stdout_text}"
-        if stderr_text:
-            output += f"STDERR:\n{stderr_text}"
-        if result.returncode != 0:
-            output += f"Return code: {result.returncode}"
-        
-        return output if output else "Command executed successfully with no output"
+
+        return _truncate_text_with_size_notice(
+            _format_process_result(result),
+            _HTTP_RESPONSE_PREVIEW_LIMIT_KB,
+        )
     except subprocess.TimeoutExpired:
         return "Error: Command timed out after 30 seconds"
     except Exception as e:
@@ -460,7 +452,7 @@ def read_file(path: str) -> str:
         log_info(f"📖 Reading file: {path}")
         with open(path, "r", encoding="utf-8", errors="ignore") as f:
             content = f.read()
-        return content
+        return _truncate_text_with_size_notice(content, _HTTP_RESPONSE_PREVIEW_LIMIT_KB)
     except FileNotFoundError:
         return f"Error: File not found at {path}"
     except Exception as e:
@@ -538,7 +530,7 @@ def http_request(url: str, method: str = "GET", headers: str = "", body: str = "
         if response.content:
             output_lines.append(response.text)
         
-        return _truncate_text_with_size_notice("\n".join(output_lines), _HTTP_RESPONSE_PREVIEW_LIMIT)
+        return _truncate_text_with_size_notice("\n".join(output_lines), _HTTP_RESPONSE_PREVIEW_LIMIT_KB)
     
     except requests.exceptions.Timeout:
         return "Error: HTTP request timed out"
@@ -574,10 +566,16 @@ def python_exec(script: str, timeout: int = 30) -> str:
                 output_parts.append(f"Partial STDOUT:\n{_decode_process_output(stdout)}")
             if stderr:
                 output_parts.append(f"Partial STDERR:\n{_decode_process_output(stderr)}")
-            return "\n".join(output_parts)
+            return _truncate_text_with_size_notice(
+                "\n".join(output_parts),
+                _HTTP_RESPONSE_PREVIEW_LIMIT_KB,
+            )
 
         result = subprocess.CompletedProcess(args=command, returncode=process.returncode, stdout=stdout, stderr=stderr)
-        return _format_process_result(result)
+        return _truncate_text_with_size_notice(
+            _format_process_result(result),
+            _HTTP_RESPONSE_PREVIEW_LIMIT_KB,
+        )
     except Exception as e:
         return f"Error executing Python script: {str(e)}"
 
