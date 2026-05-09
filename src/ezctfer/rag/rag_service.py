@@ -46,8 +46,7 @@ except ImportError:
 from ..config.log import log_info, log_success, log_separator
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_RAG_DATA_ROOT = PROJECT_ROOT / "rag"
+DEFAULT_RAG_DATA_ROOT_NAME = "rag"
 RAG_WORKING_DIR_NAME = "db"
 RAG_SOURCE_DIR_NAME = "data"
 RAG_MODELS_DIR_NAME = "models"
@@ -101,7 +100,7 @@ def load_project_env() -> None:
     if load_dotenv is None:
         return
 
-    load_dotenv(PROJECT_ROOT / ".env", override=False)
+    load_dotenv(Path.cwd() / ".env", override=False)
 
 
 def ensure_rag_dependencies() -> None:
@@ -135,9 +134,17 @@ def get_rag_data_root() -> Path:
     if configured:
         path = Path(configured)
         if not path.is_absolute():
-            path = PROJECT_ROOT / path
+            path = Path.cwd() / path
         return path
-    return DEFAULT_RAG_DATA_ROOT
+    return Path.cwd() / DEFAULT_RAG_DATA_ROOT_NAME
+
+
+def path_for_rag_reference(path: Path) -> str:
+    try:
+        return str(path.relative_to(Path.cwd()))
+    except ValueError:
+        pass
+    return str(path)
 
 
 def get_rag_source_dir() -> Path:
@@ -478,7 +485,7 @@ def initialize_knowledge_base() -> dict[str, Any]:
                 continue
 
             contents = [content for _, content in batch]
-            file_paths = [str(path.relative_to(PROJECT_ROOT)) for path, _ in batch]
+            file_paths = [path_for_rag_reference(path) for path, _ in batch]
             rag.insert(contents, file_paths=file_paths)
             indexed_files += len(batch)
             log_info(f"已写入索引: {indexed_files}")
@@ -486,7 +493,7 @@ def initialize_knowledge_base() -> dict[str, Any]:
 
         if batch:
             contents = [content for _, content in batch]
-            file_paths = [str(path.relative_to(PROJECT_ROOT)) for path, _ in batch]
+            file_paths = [path_for_rag_reference(path) for path, _ in batch]
             rag.insert(contents, file_paths=file_paths)
             indexed_files += len(batch)
             log_info(f"已写入索引: {indexed_files}")

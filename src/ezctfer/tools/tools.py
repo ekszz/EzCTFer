@@ -56,7 +56,7 @@ _quiet_mode: bool = False
 # 全局状态：是否禁用 writeup 生成
 _no_writeup: bool = False
 
-_SANDBOX_VENV_DIR = Path(__file__).resolve().parents[3] / "sandbox"
+_SANDBOX_VENV_DIR = Path.cwd() / "sandbox"
 _PROMPT_STYLE = f"{Colors.WHITE_BG}{Colors.BLACK}"
 _HTTP_RESPONSE_PREVIEW_LIMIT_KB = 8
 
