@@ -43,7 +43,7 @@ from .mcp_integration.mcp_client import (
 )
 from .mcp_integration.ida_util import ensure_ida_service, register_cleanup as register_ida_cleanup, stop_ida_service
 from .mcp_integration.jadx_util import launch_jadx, register_cleanup as register_jadx_cleanup, stop_jadx
-from .rag import close_rag, ensure_rag_runtime_ready, initialize_knowledge_base
+from .rag import close_rag, ensure_rag_runtime_ready, get_rag_data_root, initialize_knowledge_base
 from .skills.skill_loader import list_skill_names
 from .tools.tools import (
     set_rag_enabled,
@@ -267,6 +267,10 @@ def _style_panel_value(label: str | None, value: str, static_color: str, dynamic
         return f"{dynamic_color}{value}{Colors.RESET}"
 
     if label == "RAG":
+        match = re.match(r"^(enabled)(\s+\[.*\])$", value)
+        if match:
+            state_text, path_text = match.groups()
+            return f"{static_color}{state_text}{Colors.RESET}{dynamic_color}{path_text}{Colors.RESET}"
         return f"{static_color}{value}{Colors.RESET}"
 
     return f"{dynamic_color}{value}{Colors.RESET}"
@@ -312,7 +316,7 @@ def _print_startup_panel(
     right_lines.extend(_format_panel_field("", mcp_flags_text, right_width))
     right_lines.extend(_format_panel_field("HTTP MON", monitor_summary, right_width))
     if is_rag_enabled():
-        right_lines.extend(_format_panel_field("RAG", "enabled", right_width))
+        right_lines.extend(_format_panel_field("RAG", f"enabled [{get_rag_data_root()}]", right_width))
 
     left_lines = [
         " ███████████",
