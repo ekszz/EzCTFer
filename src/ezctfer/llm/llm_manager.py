@@ -1,7 +1,7 @@
 """
 LLM 管理模块
 使用数组管理多个 LLM 实例
-支持通过 httpx 配置自动重试机制
+支持通过 OpenAI/Anthropic SDK 与 httpx 配置自动重试机制
 """
 
 from collections.abc import Mapping
@@ -74,6 +74,10 @@ def build_openai_compatible_kwargs(
         "api_key": config.api_key,
         "base_url": config.api_url,
         "request_timeout": config.timeout,
+        # OpenAI SDK retries HTTP responses such as 429 and 5xx only when
+        # max_retries is configured on the OpenAI client. httpx transport
+        # retries below cover connection-level failures, not API status codes.
+        "max_retries": DEFAULT_MAX_RETRIES,
         "default_headers": {"User-Agent": CLAUDE_USER_AGENT},
         "model_kwargs": {"prompt_cache_key": prompt_cache_key},
         "http_client": http_client,
@@ -97,7 +101,7 @@ def create_http_client_with_retries(
     proxy: str | None = None,
 ) -> httpx.Client:
     """
-    创建带重试机制的 httpx 客户端
+    创建带连接层重试机制的 httpx 客户端
     
     Args:
         timeout: 请求超时时间（秒）
@@ -105,7 +109,7 @@ def create_http_client_with_retries(
         proxy: 当前 LLM 使用的代理地址；未配置时保持 httpx 默认代理行为
         
     Returns:
-        配置了重试机制的 httpx.Client
+        配置了连接层重试机制的 httpx.Client
     """
     transport_kwargs: dict[str, Any] = {
         "retries": max_retries,
@@ -120,7 +124,7 @@ def create_http_client_with_retries(
         transport_kwargs["trust_env"] = False
         client_kwargs["trust_env"] = False
 
-    # 创建带重试的 transport
+    # 创建带连接层重试的 transport
     transport = httpx.HTTPTransport(**transport_kwargs)
     
     # 创建客户端
@@ -139,7 +143,7 @@ def create_async_http_client_with_retries(
     proxy: str | None = None,
 ) -> httpx.AsyncClient:
     """
-    创建带重试机制的异步 httpx 客户端
+    创建带连接层重试机制的异步 httpx 客户端
     
     Args:
         timeout: 请求超时时间（秒）
@@ -147,7 +151,7 @@ def create_async_http_client_with_retries(
         proxy: 当前 LLM 使用的代理地址；未配置时保持 httpx 默认代理行为
         
     Returns:
-        配置了重试机制的 httpx.AsyncClient
+        配置了连接层重试机制的 httpx.AsyncClient
     """
     transport_kwargs: dict[str, Any] = {
         "retries": max_retries,
@@ -162,7 +166,7 @@ def create_async_http_client_with_retries(
         transport_kwargs["trust_env"] = False
         client_kwargs["trust_env"] = False
 
-    # 创建带重试的 transport
+    # 创建带连接层重试的 transport
     transport = httpx.AsyncHTTPTransport(**transport_kwargs)
     
     # 创建异步客户端
@@ -310,7 +314,9 @@ class LLMManager:
                 {
                     "model": config.model,
                     "api_key": config.api_key,
-                    "base_url": config.api_url,
+                    # langchain_deepseek.ChatDeepSeek uses api_base rather than
+                    # the OpenAI-compatible base_url alias.
+                    "api_base": config.api_url,
                     "timeout": config.timeout,
                     "max_retries": DEFAULT_MAX_RETRIES,
                     # 设置自定义 User-Agent
