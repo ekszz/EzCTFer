@@ -594,7 +594,7 @@ class CTFSolver:
             if block.get('type') not in ('reasoning', 'thinking', 'reasoning_content'):
                 continue
 
-            text = block.get('text')
+            text = block.get('text') or block.get('thinking')
             if isinstance(text, str) and text.strip():
                 parts.append(text.strip())
 
