@@ -3,6 +3,7 @@ CTF Solver - 多LLM协作的CTF解题框架
 使用 LangChain 和 LangGraph 实现多轮次Agent解题
 """
 
+import json
 import random
 import re
 from typing import TypedDict, Annotated, Sequence
@@ -34,12 +35,16 @@ from ..tools.tools import (
     get_found_flag,
     FlagFoundException,
     is_dual_thread_mode,
+    is_graph_mode,
     is_quiet_mode,
     is_stop_requested,
     get_unread_findings,
     register_thread,
     get_flag_finder_thread_id,
     is_no_writeup,
+    is_result_submitted,
+    get_graph_result,
+    ResultSubmittedException,
 )
 from ..config.prompts import build_ctf_system_prompt, get_summary_prompt, get_writeup_prompt
 from ..web.monitor import get_monitor, ChatMessage, get_pending_human_message, has_pending_human_message
@@ -66,6 +71,11 @@ def get_all_tools() -> list[BaseTool]:
         log_warning(f"加载 MCP 工具失败: {e}")
     
     return all_tools
+
+
+def _without_record_finding(tools: list[BaseTool]) -> list[BaseTool]:
+    """图模式不向 LLM 暴露 record_finding。"""
+    return [tool for tool in tools if getattr(tool, "name", "") != "record_finding"]
 
 
 # 最大迭代轮数（每个LLM）
@@ -136,6 +146,7 @@ class CTFSolver:
         
         根据当前模式和配置参数选择 LLM 索引：
         - 双线程模式：使用 DUAL_THREAD_0_LLM（线程1）或 DUAL_THREAD_1_LLM（线程2）
+        - 图模式：thread_id=0 使用 SINGLE_THREAD_LLM，thread_id=1/2 使用 DUAL_THREAD_0/1_LLM
         - 单线程模式：使用 SINGLE_THREAD_LLM
         - 如果未配置或配置无效，则随机选择
         
@@ -148,6 +159,14 @@ class CTFSolver:
         if is_dual_thread_mode():
             # 双线程模式：根据线程 ID 选择配置
             if self.thread_id == 1:
+                configured_index = config.dual_thread_0_llm
+            elif self.thread_id == 2:
+                configured_index = config.dual_thread_1_llm
+        elif is_graph_mode():
+            # 图模式：Reason 使用单线程配置，两个 Explorer 使用双线程配置
+            if self.thread_id == 0:
+                configured_index = config.single_thread_llm
+            elif self.thread_id == 1:
                 configured_index = config.dual_thread_0_llm
             elif self.thread_id == 2:
                 configured_index = config.dual_thread_1_llm
@@ -171,18 +190,36 @@ class CTFSolver:
         llm_index = random.randint(0, len(self.llm_manager) - 1)
         return llm_index
 
-    def run_single_llm(self, llm_index: int, initial_message: str = None, round_num: int = 1) -> tuple[bool, str]:
+    def run_single_llm(
+        self,
+        llm_index: int,
+        initial_message: str = None,
+        round_num: int = 1,
+        system_prompt_override: str | None = None,
+        extra_tools: list | None = None,
+        conclude_hint: str | None = None,
+        use_base_tools: bool = True,
+    ) -> tuple[bool, str]:
         """
         运行单个LLM进行解题 - 重要
-        
+
         Args:
             llm_index: LLM索引
             initial_message: 初始消息（可选）
             round_num: 当前轮次号
-            
+            system_prompt_override: 图模式下覆盖默认系统提示词
+            extra_tools: 图模式下动态注入的额外工具（如 submit_insight）
+            conclude_hint: 达到迭代限制时注入的收尾提示语（注入一次后置空）
+            use_base_tools: 是否使用基础工具（reason 阶段可设为 False，只使用 extra_tools）
+
         Returns:
             (是否找到flag, 总结内容)
         """
+        # 图模式/双线程模式下，solver 可能在不同工作线程中复用；
+        # 每次实际运行前都设置当前上下文线程 ID，供工具侧隔离状态。
+        if is_dual_thread_mode() or is_graph_mode():
+            register_thread(self.thread_id, self.thread_name)
+
         llm_instance = self.llm_manager.get_llm_by_index(llm_index)
         if not llm_instance:
             return False, f"LLM索引 {llm_index} 不存在"
@@ -192,8 +229,8 @@ class CTFSolver:
         # 判断是否是新LLM（有之前的发现）
         is_new_llm = len(get_important_info()) > 0
         
-        # 构建系统提示
-        system_prompt = self._build_system_prompt(llm_instance.name, is_new_llm)
+        # 构建系统提示（图模式可覆盖）
+        system_prompt = system_prompt_override or self._build_system_prompt(llm_instance.name, is_new_llm)
         
         # 构建输入消息
         if initial_message:
@@ -219,8 +256,14 @@ class CTFSolver:
         all_messages = []
         
         try:
-            # 获取所有工具（内置工具 + MCP 工具）
-            all_tools = self.all_tools
+            # 获取所有工具（内置工具 + MCP 工具，图模式可追加额外工具）
+            if use_base_tools:
+                all_tools = _without_record_finding(self.all_tools) if is_graph_mode() else self.all_tools
+                if extra_tools:
+                    all_tools = list(all_tools) + list(extra_tools)
+            else:
+                # reason 阶段：只使用 extra_tools（如 submit_missions），不使用基础工具
+                all_tools = list(extra_tools) if extra_tools else []
             
             # 判断是否是 Anthropic 类型的 API
             is_anthropic = llm_instance.config.api_type == ApiType.ANTHROPIC
@@ -270,6 +313,7 @@ class CTFSolver:
             # recursion_limit 可能会在每次 stream 调用时重置，
             # 所以需要手动追踪总迭代次数以确保不超过限制
             total_iterations = 0
+            pending_conclude_hint: str | None = None
             
             # 循环执行，直到 Agent 完成
             while True:
@@ -282,8 +326,17 @@ class CTFSolver:
                 
                 # 检查是否超过最大迭代次数
                 if total_iterations >= self.max_iterations:
-                    log_warning(f"达到最大迭代次数限制 ({self.max_iterations})，强制结束本轮", self.thread_id)
-                    break
+                    if pending_conclude_hint:
+                        current_input = Command(resume={})
+                    elif conclude_hint and not is_result_submitted():
+                        # 图模式：先标记待注入，等当前工具响应闭合后再通过 message_parts 注入。
+                        log_info("📌 达到迭代限制，等待安全点注入收尾提示", self.thread_id)
+                        pending_conclude_hint = conclude_hint
+                        conclude_hint = None  # 只注入一次
+                        current_input = Command(resume={})
+                    else:
+                        log_warning(f"达到最大迭代次数限制 ({self.max_iterations})，强制结束本轮", self.thread_id)
+                        break
                 # 执行 stream，使用 stream_mode="values" 获取事件
                 # checkpointer 通过 config 传入，支持中断恢复
                 events = agent.stream(
@@ -314,6 +367,13 @@ class CTFSolver:
                                 log_debug(f"\n🔗 收到另一线程的发现 ({len(unread_findings)} 条)", self.thread_id)
                                 combined_findings = "\n".join([f"- {f}" for f in unread_findings])
                                 message_parts.append(f"[来自另一队伍的重大发现，以下内容不需要重复记录]\n{combined_findings}")
+
+                        if pending_conclude_hint and not is_result_submitted():
+                            log_info("📌 在工具响应后注入收尾提示，请 LLM 调用 submit 工具提交结果", self.thread_id)
+                            message_parts.append(pending_conclude_hint)
+                            pending_conclude_hint = None
+                            # 给额外约 20 步（~10 次工具调用）的收尾机会
+                            total_iterations = max(0, self.max_iterations - 20)
                         
                         # 如果有待注入的消息，合并为一条 HumanMessage
                         if message_parts:
@@ -353,9 +413,27 @@ class CTFSolver:
                             flag = get_found_flag()
                             return self._handle_flag_found(llm_instance, all_messages, flag)
                         
+                        # 图模式：检查 LLM 是否通过 tool 提交了结构化结果
+                        if is_result_submitted():
+                            result = get_graph_result()
+                            summary = self._format_graph_result_summary(result)
+                            monitor.complete_current_round(summary, self.thread_id)
+                            return False, summary
+                        
                         # 检查是否达到迭代限制
                         if total_iterations >= self.max_iterations:
-                            log_warning(f"达到最大迭代次数限制 ({self.max_iterations})，准备结束本轮", self.thread_id)
+                            if pending_conclude_hint and not is_result_submitted():
+                                # 已经在等待收尾提示的安全注入点。
+                                # 不要 break；继续消费当前 stream，直到工具响应后的 interrupt
+                                # 或 stream 正常结束，再通过 message_parts 注入。
+                                continue
+                            elif conclude_hint and not is_result_submitted():
+                                log_info("📌 达到迭代限制，等待工具响应后注入收尾提示", self.thread_id)
+                                pending_conclude_hint = conclude_hint
+                                conclude_hint = None  # 只注入一次
+                                current_input = Command(resume={})
+                            else:
+                                log_warning(f"达到最大迭代次数限制 ({self.max_iterations})，准备结束本轮", self.thread_id)
                             break
                 else:
                     # for 循环正常结束（没有 break），说明 stream 完成
@@ -376,6 +454,13 @@ class CTFSolver:
                             log_debug(f"\n🔗 收到另一线程的发现 ({len(unread_findings)} 条)", self.thread_id)
                             combined_findings = "\n".join([f"- {f}" for f in unread_findings])
                             message_parts.append(f"[来自另一队伍的重大发现，以下内容不需要重复记录]\n{combined_findings}")
+
+                    if pending_conclude_hint and not is_result_submitted():
+                        log_info("📌 在工具响应后注入收尾提示，请 LLM 调用 submit 工具提交结果", self.thread_id)
+                        message_parts.append(pending_conclude_hint)
+                        pending_conclude_hint = None
+                        # 给额外约 20 步（~10 次工具调用）的收尾机会
+                        total_iterations = max(0, self.max_iterations - 20)
                     
                     # 如果有待注入的消息，合并为一条 HumanMessage
                     if message_parts:
@@ -416,6 +501,13 @@ class CTFSolver:
                 flag = get_found_flag()
                 return self._handle_flag_found(llm_instance, all_messages, flag)
             
+            # 图模式：检查 LLM 是否通过 tool 提交了结构化结果
+            if is_result_submitted():
+                result = get_graph_result()
+                summary = self._format_graph_result_summary(result)
+                monitor.complete_current_round(summary, self.thread_id)
+                return False, summary
+            
             # 请求总结
             summary = self._request_summary(llm_instance, all_messages)
             
@@ -429,6 +521,13 @@ class CTFSolver:
             flag = e.flag
             return self._handle_flag_found(llm_instance, all_messages, flag)
             
+        except ResultSubmittedException:
+            # 图模式：LLM 通过 tool 提交了结构化结果，正常返回
+            result = get_graph_result()
+            summary = self._format_graph_result_summary(result)
+            monitor.complete_current_round(summary, self.thread_id)
+            return False, summary
+            
         except Exception as e:
             error_msg = f"Agent执行出错: {str(e)}"
             log_error(error_msg, self.thread_id)
@@ -438,10 +537,19 @@ class CTFSolver:
             return False, error_msg
 
     def _handle_flag_found(self, llm_instance: LLMInstance, all_messages: list, flag: str) -> tuple[bool, str]:
-        summary = self._request_summary(llm_instance, all_messages)
         finder_thread_id = get_flag_finder_thread_id()
-        should_generate_writeup = (not is_dual_thread_mode()) or (finder_thread_id == self.thread_id)
+        if is_dual_thread_mode() or is_graph_mode():
+            should_generate_writeup = finder_thread_id == self.thread_id
+        else:
+            should_generate_writeup = True
         monitor = get_monitor()
+
+        if not should_generate_writeup:
+            stop_summary = f"其他线程已找到flag: {flag}\n\n本轮停止，不生成总结。"
+            monitor.complete_current_round(stop_summary, self.thread_id)
+            return True, stop_summary
+
+        summary = self._request_summary(llm_instance, all_messages)
 
         if should_generate_writeup:
             if not self._confirm_generate_writeup():
@@ -452,8 +560,34 @@ class CTFSolver:
             monitor.complete_current_round(f"找到flag: {flag}\n\n总结: {summary}\n\n--- Writeup ---\n{writeup}", self.thread_id)
             return True, f"已找到flag: {flag}\n\n总结: {summary}\n\n--- Writeup ---\n{writeup}"
 
-        monitor.complete_current_round(f"找到flag: {flag}\n\n总结: {summary}", self.thread_id)
-        return True, f"已找到flag: {flag}\n\n总结: {summary}"
+    def _format_graph_result_summary(self, result: dict | None) -> str:
+        """把图模式工具提交结果格式化为 Web Monitor 友好的本轮总结。"""
+        if not result:
+            return "图模式结果：已提交，但结果为空。"
+
+        result_type = result.get("type")
+        if result_type == "insight":
+            description = result.get("description") or ""
+            return f"提交 insight：\n\n{description}" if description else "提交 insight：无内容"
+
+        if result_type == "missions":
+            missions = result.get("missions") or []
+            if not missions:
+                return "提交 missions：无待探索方向"
+
+            lines = [f"提交 missions：共 {len(missions)} 个待探索方向"]
+            for index, mission in enumerate(missions, 1):
+                if not isinstance(mission, dict):
+                    continue
+                desc = mission.get("description") or ""
+                priority = mission.get("priority", 5)
+                from_insights = mission.get("from") or ["ROOT"]
+                if not isinstance(from_insights, list):
+                    from_insights = [from_insights]
+                lines.append(f"{index}. P{priority} [{', '.join(map(str, from_insights))}] {desc}")
+            return "\n".join(lines)
+
+        return f"图模式结果：{json.dumps(result, ensure_ascii=False)}"
 
     def _confirm_generate_writeup(self) -> bool:
         if is_no_writeup():
@@ -769,9 +903,9 @@ class CTFSolver:
                 elif isinstance(msg, HumanMessage):
                     summary_messages.append(HumanMessage(content=f"[用户]: {msg.content}"))
             
-            # 添加总结请求（OpenAI 兼容 API 需要）
-            if not is_anthropic:
-                summary_messages.append(HumanMessage(content="请根据以上对话过程，提供简洁的总结："))
+            # 总结请求必须放在末尾，避免当最后一条历史是工具响应时，
+            # 模型把工具结果当作要续写的最后上下文。
+            summary_messages.append(HumanMessage(content="请根据以上对话过程，提供简洁的总结："))
             
             response = llm_instance.client.invoke(summary_messages)
             summary = self._extract_text_content(response.content)

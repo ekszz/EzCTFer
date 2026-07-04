@@ -22,6 +22,10 @@ from ..skills.skill_loader import list_skill_names
 # FastAPI应用实例
 app = FastAPI(title="LLM Monitor")
 
+# 挂载静态文件目录（本地化第三方库等静态资源，如 g6.min.js）
+_STATIC_DIR = Path(__file__).parent / "static"
+app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
+
 
 def get_version() -> str:
     """从 pyproject.toml 读取版本号"""
@@ -46,8 +50,10 @@ class ConnectionManager:
     def __init__(self):
         self.active_connections: list[WebSocket] = []
         self._lock = asyncio.Lock()
+        self._loop: asyncio.AbstractEventLoop | None = None
     
     async def connect(self, websocket: WebSocket):
+        self._loop = asyncio.get_running_loop()
         await websocket.accept()
         async with self._lock:
             self.active_connections.append(websocket)
@@ -64,6 +70,12 @@ class ConnectionManager:
                     await connection.send_json(message)
                 except:
                     pass
+
+    def broadcast_threadsafe(self, message: dict):
+        loop = self._loop
+        if loop is None or not loop.is_running():
+            return
+        asyncio.run_coroutine_threadsafe(self.broadcast(message), loop)
 
 
 manager = ConnectionManager()
@@ -105,7 +117,8 @@ async def get_rounds():
                 "end_time": r["end_time"],
                 "status": r["status"],
                 "message_count": len(r["messages"]),
-                "thread_id": r.get("thread_id", 0)
+                "thread_id": r.get("thread_id", 0),
+                "graph_mission_id": r.get("metadata", {}).get("graph_mission_id")
             }
             for r in rounds
         ],
@@ -129,6 +142,20 @@ async def get_major_findings():
     monitor = get_monitor()
     findings = monitor.get_major_findings()
     return {"findings": findings}
+
+
+@app.get("/api/frontend-notifications")
+async def get_frontend_notifications():
+    """获取所有前端持久通知"""
+    monitor = get_monitor()
+    return {"notifications": monitor.get_frontend_notifications()}
+
+
+@app.get("/api/graph-state")
+async def get_graph_state():
+    """获取图模式结构化状态"""
+    monitor = get_monitor()
+    return monitor.get_graph_state()
 
 
 # 用户消息请求模型
@@ -211,7 +238,18 @@ async def broadcast_update():
 
 def notify_update():
     """通知更新（非异步调用）"""
-    asyncio.run(broadcast_update())
+    manager.broadcast_threadsafe({
+        "type": "update",
+        "findings_count": len(get_monitor().get_major_findings())
+    })
+
+
+def notify_frontend_notification(notification: dict):
+    """从非异步线程向前端推送一条持久通知。"""
+    manager.broadcast_threadsafe({
+        "type": "frontend_notification",
+        "notification": notification,
+    })
 
 
 # Web服务器启动函数

@@ -36,6 +36,19 @@ class MajorFinding:
 
 
 @dataclass
+class FrontendNotification:
+    """前端持久通知"""
+    id: str
+    type: str
+    title: str
+    message: str
+    round_num: int
+    thread_id: int = 0
+    timestamp: str = field(default_factory=lambda: datetime.now().strftime("%H:%M:%S"))
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
 class LLMRound:
     """一轮LLM调用"""
     round_num: int
@@ -47,6 +60,7 @@ class LLMRound:
     status: str = "running"  # 'running', 'completed', 'error'
     summary: str | None = None
     thread_id: int = 0  # 线程ID（用于区分双线程模式下的不同线程）
+    metadata: dict[str, Any] = field(default_factory=dict)
     
     def add_message(self, message: ChatMessage) -> None:
         """添加一条消息"""
@@ -82,6 +96,15 @@ class LLMMonitor:
                     cls._instance._rounds: list[LLMRound] = []
                     cls._instance._current_rounds: dict = {}  # 按线程ID存储当前轮次，支持双线程模式
                     cls._instance._major_findings: list[MajorFinding] = []
+                    cls._instance._frontend_notifications: list[FrontendNotification] = []
+                    cls._instance._pending_round_metadata: dict[tuple[int, int], dict[str, Any]] = {}
+                    cls._instance._graph_enabled: bool = False
+                    cls._instance._graph_snapshot: dict = {
+                        "insights": [],
+                        "missions": [],
+                        "edges": [],
+                        "step": 0,
+                    }
                     cls._instance._data_lock = threading.Lock()
         return cls._instance
     
@@ -111,6 +134,9 @@ class LLMMonitor:
                 llm_model=llm_model,
                 thread_id=thread_id
             )
+            pending_metadata = self._pending_round_metadata.pop((round_num, thread_id), None)
+            if pending_metadata:
+                new_round.metadata.update(pending_metadata)
             self._rounds.append(new_round)
             self._current_rounds[thread_id] = new_round
             
@@ -141,6 +167,24 @@ class LLMMonitor:
                 current_round.error(error_msg)
                 if thread_id in self._current_rounds:
                     del self._current_rounds[thread_id]
+
+    def set_current_round_metadata(self, metadata: dict[str, Any], thread_id: int = 0) -> None:
+        """为当前轮次追加元数据。"""
+        with self._data_lock:
+            current_round = self._current_rounds.get(thread_id)
+            if current_round:
+                current_round.metadata.update(metadata)
+
+    def set_round_metadata(self, round_num: int, thread_id: int, metadata: dict[str, Any]) -> None:
+        """为指定轮次追加元数据；轮次尚未创建时先缓存。"""
+        with self._data_lock:
+            for round_data in self._rounds:
+                if round_data.round_num == round_num and round_data.thread_id == thread_id:
+                    round_data.metadata.update(metadata)
+                    return
+            key = (round_num, thread_id)
+            pending = self._pending_round_metadata.setdefault(key, {})
+            pending.update(metadata)
     
     def get_rounds(self) -> list[dict]:
         """获取所有轮次的数据（用于API返回）"""
@@ -171,6 +215,7 @@ class LLMMonitor:
             "status": r.status,
             "summary": r.summary,
             "thread_id": r.thread_id,
+            "metadata": dict(r.metadata),
             "messages": [
                 {
                     "role": m.role,
@@ -211,6 +256,30 @@ class LLMMonitor:
             )
             self._major_findings.append(finding)
             return finding
+
+    def add_frontend_notification(
+        self,
+        type: str,
+        title: str,
+        message: str,
+        round_num: int | None = None,
+        thread_id: int = 0,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict:
+        """添加一个前端持久通知，并返回可直接广播的字典。"""
+        with self._data_lock:
+            current_round = self._current_rounds.get(thread_id)
+            notification = FrontendNotification(
+                id=str(uuid.uuid4()),
+                type=type,
+                title=title,
+                message=message,
+                round_num=round_num or (current_round.round_num if current_round else 0),
+                thread_id=thread_id,
+                metadata=metadata or {},
+            )
+            self._frontend_notifications.append(notification)
+            return self._frontend_notification_to_dict(notification)
     
     def get_major_findings(self) -> list[dict]:
         """获取所有重大发现"""
@@ -226,6 +295,24 @@ class LLMMonitor:
                 }
                 for f in self._major_findings
             ]
+
+    def get_frontend_notifications(self) -> list[dict]:
+        """获取所有前端持久通知。"""
+        with self._data_lock:
+            return [self._frontend_notification_to_dict(n) for n in self._frontend_notifications]
+
+    def _frontend_notification_to_dict(self, notification: FrontendNotification) -> dict:
+        """将前端通知对象转换为字典。"""
+        return {
+            "id": notification.id,
+            "type": notification.type,
+            "title": notification.title,
+            "message": notification.message,
+            "round_num": notification.round_num,
+            "thread_id": notification.thread_id,
+            "timestamp": notification.timestamp,
+            "metadata": dict(notification.metadata),
+        }
     
     def delete_major_finding(self, finding_id: str) -> bool:
         """删除指定ID的重大发现"""
@@ -235,6 +322,25 @@ class LLMMonitor:
                     self._major_findings.pop(i)
                     return True
             return False
+
+    def set_graph_mode(self, enabled: bool = True) -> None:
+        """设置是否启用图模式监控视图。"""
+        with self._data_lock:
+            self._graph_enabled = enabled
+
+    def update_graph_snapshot(self, snapshot: dict) -> None:
+        """更新图模式结构化快照。"""
+        with self._data_lock:
+            self._graph_enabled = True
+            self._graph_snapshot = snapshot
+
+    def get_graph_state(self) -> dict:
+        """获取图模式结构化状态。"""
+        with self._data_lock:
+            return {
+                "enabled": self._graph_enabled,
+                **self._graph_snapshot,
+            }
     
     def clear(self) -> None:
         """清除所有数据"""
@@ -242,6 +348,15 @@ class LLMMonitor:
             self._rounds.clear()
             self._current_rounds.clear()
             self._major_findings.clear()
+            self._frontend_notifications.clear()
+            self._pending_round_metadata.clear()
+            self._graph_enabled = False
+            self._graph_snapshot = {
+                "insights": [],
+                "missions": [],
+                "edges": [],
+                "step": 0,
+            }
 
 
 # 全局监控器实例

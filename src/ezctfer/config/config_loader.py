@@ -63,7 +63,9 @@ class AppConfig:
     """应用配置数据类"""
     llm_configs: list[LLMConfig] = field(default_factory=list)
     max_iterations: int = 120  # LangGraph图执行步数，每次工具调用约消耗2步，所以120约等于60次工具调用
+    max_iterations_graph: int = 100  # 图模式 max_iterations（优先级：MAX_ITERATIONS_GRAPH > MAX_ITERATIONS > 100）
     max_rounds: int = 10  # 最多LLM切换轮数
+    max_rounds_graph: int = 10  # 图模式 reason 最大轮数（优先级：MAX_ROUNDS_GRAPH > MAX_ROUNDS > 10）
     # LLM 选择配置（可选）
     single_thread_llm: int | None = None  # 单线程模式下使用的 LLM 索引
     dual_thread_0_llm: int | None = None  # 双线程模式下线程1使用的 LLM 索引
@@ -125,6 +127,22 @@ class ConfigLoader:
         # 解析应用配置参数
         max_iterations = int(os.getenv("MAX_ITERATIONS", "120"))
         max_rounds = int(os.getenv("MAX_ROUNDS", "10"))
+        # 图模式 reason 最大轮数：优先 MAX_ROUNDS_GRAPH，未配置时复用 MAX_ROUNDS（已默认 10）
+        max_rounds_graph_raw = os.getenv("MAX_ROUNDS_GRAPH")
+        if max_rounds_graph_raw is not None and max_rounds_graph_raw.strip() != "":
+            max_rounds_graph = int(max_rounds_graph_raw)
+        else:
+            max_rounds_graph = max_rounds
+
+        # 图模式 max_iterations：优先 MAX_ITERATIONS_GRAPH，其次复用 MAX_ITERATIONS（显式配置时），最后默认 100
+        max_iterations_graph_raw = os.getenv("MAX_ITERATIONS_GRAPH")
+        max_iterations_raw = os.getenv("MAX_ITERATIONS")
+        if max_iterations_graph_raw is not None and max_iterations_graph_raw.strip() != "":
+            max_iterations_graph = int(max_iterations_graph_raw)
+        elif max_iterations_raw is not None and max_iterations_raw.strip() != "":
+            max_iterations_graph = int(max_iterations_raw)
+        else:
+            max_iterations_graph = 100
         
         # 解析 LLM 选择配置（可选）
         single_thread_llm = self._parse_optional_int("SINGLE_THREAD_LLM")
@@ -134,7 +152,9 @@ class ConfigLoader:
         self._config = AppConfig(
             llm_configs=llm_configs,
             max_iterations=max_iterations,
+            max_iterations_graph=max_iterations_graph,
             max_rounds=max_rounds,
+            max_rounds_graph=max_rounds_graph,
             single_thread_llm=single_thread_llm,
             dual_thread_0_llm=dual_thread_0_llm,
             dual_thread_1_llm=dual_thread_1_llm

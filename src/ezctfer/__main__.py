@@ -31,6 +31,7 @@ from .config.log import (
 from .llm import init_llms, get_llm_manager
 from .agent import solve_ctf, CTFSolver
 from .agent.thread_manager import run_dual_thread_solve
+from .agent.graph_solver import solve_ctf_graph
 from .web import start_web_server, clear_monitor
 from .mcp_integration.mcp_client import (
     is_ida_pro_mcp_enabled,
@@ -279,6 +280,7 @@ def _style_panel_value(label: str | None, value: str, static_color: str, dynamic
 def _print_startup_panel(
     *,
     dual_thread: bool,
+    graph_mode: bool = False,
     configured_llm_count: int,
     llm_labels: list[str],
     selected_llm_summary: str,
@@ -303,9 +305,13 @@ def _print_startup_panel(
     right_lines: list[tuple[str | None, str]] = []
     right_lines.append(("__TITLE__", random.choice(_STARTUP_QUOTES)))
     right_lines.append((None, ""))
-    right_lines.extend(
-        _format_panel_field("MODE", "DUAL-THREAD" if dual_thread else "SINGLE-THREAD", right_width)
-    )
+    if graph_mode:
+        mode_label = "GRAPH"
+    elif dual_thread:
+        mode_label = "DUAL-THREAD"
+    else:
+        mode_label = "SINGLE-THREAD"
+    right_lines.extend(_format_panel_field("MODE", mode_label, right_width))
     right_lines.extend(_format_panel_field("LLMS", f"{configured_llm_count} configured", right_width))
     right_lines.extend(
         _format_panel_field("LLM LIST", ", ".join(llm_labels) if llm_labels else "none", right_width)
@@ -391,7 +397,7 @@ def _print_startup_panel(
     console_print(bottom_border)
 
 
-def main(dual_thread: bool = False, quiet: bool = False, no_writeup: bool = False, config_path: str | None = None, prompt: str | None = None):
+def main(dual_thread: bool = False, quiet: bool = False, no_writeup: bool = False, config_path: str | None = None, prompt: str | None = None, graph: bool = False):
     # 设置安静模式
     set_quiet_mode(quiet)
     # 设置是否禁用 writeup
@@ -445,8 +451,10 @@ def main(dual_thread: bool = False, quiet: bool = False, no_writeup: bool = Fals
     except Exception as e:
         log_warning(f"预加载 MCP 工具失败，将在运行时按需加载: {e}")
 
+    # 图模式下隐藏单/双线程标签，用 GRAPH 标识
     _print_startup_panel(
-        dual_thread=dual_thread,
+        dual_thread=(dual_thread and not graph),
+        graph_mode=graph,
         configured_llm_count=configured_llm_count,
         llm_labels=llm_labels,
         selected_llm_summary=selected_llm_summary,
@@ -486,7 +494,26 @@ def main(dual_thread: bool = False, quiet: bool = False, no_writeup: bool = Fals
         log_debug("开始解题...")
     
     try:
-        if dual_thread:
+        if graph:
+            # 图模式（Insight-Mission 图探索）
+            import signal
+            init_global_stop_signal()
+
+            signal_handler = build_double_ctrl_c_handler(
+                on_first_interrupt=request_global_stop,
+                first_message="检测到 Ctrl+C，正在优雅退出... 再按一次将强制结束程序。",
+                second_message="再次检测到 Ctrl+C，正在强制结束程序...",
+            )
+            old_handler = signal.signal(signal.SIGINT, signal_handler)
+            try:
+                success, result = solve_ctf_graph(
+                    task_description=task_description,
+                    max_iterations=config.max_iterations_graph,
+                    max_rounds=config.max_rounds_graph,
+                )
+            finally:
+                signal.signal(signal.SIGINT, old_handler)
+        elif dual_thread:
             # 双线程模式
             success, result = run_dual_thread_solve(
                 task_description=task_description,
@@ -601,12 +628,18 @@ def cli_entry():
     parser.add_argument("--rag", action="store_true", help="启用 LightRAG 知识检索工具")
     parser.add_argument("--init-rag", action="store_true", help="初始化 LightRAG 知识库并退出")
     parser.add_argument("--dual-thread", action="store_true", help="启用双线程解题模式")
+    parser.add_argument("--graph", action="store_true", help="启用图模式（Insight-Mission 图探索）")
     parser.add_argument("--debug", action="store_true", help="显示 debug 级别日志")
     parser.add_argument("--prompt", type=str, help="直接提供题目描述，无需手动输入")
     parser.add_argument("--quiet", action="store_true", help="安静模式，找到flag时自动确认，不提示用户")
     parser.add_argument("--no-writeup", action="store_true", help="禁用 writeup 生成")
     args = parser.parse_args()
     set_debug_enabled(args.debug)
+
+    # --graph 与 --dual-thread 两种模式互斥，不可同时启用
+    if args.graph and args.dual_thread:
+        log_error("--graph 与 --dual-thread 两种模式互斥，不能同时使用，请二选一。")
+        sys.exit(1)
 
     if args.init_rag:
         try:
@@ -673,7 +706,14 @@ def cli_entry():
     if args.demo:
         run_demo(config_path=args.config)
     else:
-        main(dual_thread=args.dual_thread, quiet=args.quiet, no_writeup=args.no_writeup, config_path=args.config, prompt=args.prompt)
+        main(
+            dual_thread=args.dual_thread,
+            quiet=args.quiet,
+            no_writeup=args.no_writeup,
+            config_path=args.config,
+            prompt=args.prompt,
+            graph=args.graph,
+        )
     
     # 退出逻辑：如果设置了 --quiet 参数，则等待10秒后自动退出；否则等待用户按键
     if args.quiet:

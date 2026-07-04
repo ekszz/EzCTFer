@@ -16,11 +16,14 @@ from typing import Callable, Optional, Union
 
 import requests
 from langchain_core.tools import tool
+from pydantic import BaseModel, ConfigDict, Field
 
 from ..config.prompts import (
     TOOL_RECORD_FINDING_DESCRIPTION,
     TOOL_SUBMIT_FLAG_DESCRIPTION,
     TOOL_RETRIEVE_KNOWLEDGE_DESCRIPTION,
+    TOOL_SUBMIT_INSIGHT_DESCRIPTION,
+    TOOL_SUBMIT_MISSIONS_DESCRIPTION,
 )
 from ..config.log import (
     log_info,
@@ -275,6 +278,9 @@ def build_double_ctrl_c_handler(
 # 是否启用双线程模式
 _is_dual_thread_mode: bool = False
 
+# 是否启用图模式
+_is_graph_mode: bool = False
+
 # 停止信号（当某线程找到flag时通知另一线程停止）
 _stop_signal: Optional[threading.Event] = None
 
@@ -309,19 +315,33 @@ def is_dual_thread_mode() -> bool:
     return _is_dual_thread_mode
 
 
+def init_graph_mode() -> None:
+    """初始化图模式"""
+    global _is_graph_mode
+    _is_graph_mode = True
+
+
+def is_graph_mode() -> bool:
+    """检查是否启用了图模式"""
+    return _is_graph_mode
+
+
 def register_thread(thread_id: int, thread_name: str = "") -> None:
     """
-    注册当前线程（在双线程模式下）
+    注册当前线程（在双线程模式或图模式下）
     
     Args:
         thread_id: 线程ID（建议使用 1 或 2）
         thread_name: 线程名称（可选）
     """
-    if not _is_dual_thread_mode:
+    if not (_is_dual_thread_mode or _is_graph_mode):
         return
     
     # 设置 ContextVar（可以在异步/线程池中正确传递）
     _current_thread_id_var.set(thread_id)
+
+    if not _is_dual_thread_mode:
+        return
     
     # 初始化该线程的已读位置为当前 important_info 的长度
     # 这样该线程只会收到注册之后其他线程添加的发现
@@ -418,6 +438,48 @@ def get_flag_finder_thread_id() -> int | None:
     return flag_finder_thread_id
 
 
+def _record_flag_as_graph_insight(flag: str) -> None:
+    """图模式下，将确认后的 flag 记录为当前线程的 insight 提交结果。"""
+    if not _is_graph_mode:
+        return
+    _set_graph_result(
+        "insight",
+        {
+            "description": flag,
+            "flag": flag,
+            "is_flag": True,
+        },
+    )
+
+
+def _notify_submit_flag_called(flag: str, thread_id: int) -> None:
+    """通知 Web 前端 LLM 调用了 submit_flag 工具。"""
+    try:
+        from ..web.monitor import get_monitor
+
+        monitor = get_monitor()
+        current_round = monitor.get_current_round(thread_id)
+        round_num = current_round.round_num if current_round else None
+        thread_label = f"线程 {thread_id}" if thread_id > 0 else "当前线程"
+        notification = monitor.add_frontend_notification(
+            type="submit_flag",
+            title=f"{thread_label} 提交了候选 flag",
+            message=flag,
+            round_num=round_num,
+            thread_id=thread_id,
+            metadata={"flag": flag},
+        )
+
+        try:
+            from ..web.app import notify_frontend_notification
+
+            notify_frontend_notification(notification)
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
 def clear_state() -> None:
     """清除全局状态"""
     global important_info, flag_found, found_flag, flag_finder_thread_id
@@ -429,7 +491,7 @@ def clear_state() -> None:
 
 @tool
 def execute_command(command: str) -> str:
-    """Execute a shell command and return the output. Use this for running system commands, scripts, or tools like curl, wget, python, etc."""
+    """Execute a shell command and return the output. Use this for running system commands, shells, or tools like curl, wget, etc. If you want to run Python scripts, use python_exec tool instead."""
     try:
         log_debug(f"🔧 Executing: {command}")
         # Use binary mode to avoid encoding errors, then decode with error handling
@@ -690,6 +752,7 @@ def submit_flag(flag: str) -> str:
     global flag_found, found_flag, flag_finder_thread_id
 
     thread_id = _get_thread_id_from_context()
+    _notify_submit_flag_called(flag, thread_id)
 
     if _quiet_mode:
         log_color(f"🎉 [FLAG FOUND] {flag}", Colors.GREEN, thread_id, bold=True)
@@ -703,6 +766,8 @@ def submit_flag(flag: str) -> str:
             flag_found = True
             found_flag = flag
             flag_finder_thread_id = thread_id
+
+        _record_flag_as_graph_insight(flag)
 
         try:
             from ..web.monitor import get_monitor
@@ -747,6 +812,8 @@ def submit_flag(flag: str) -> str:
                     flag_found = True
                     found_flag = flag
                     flag_finder_thread_id = thread_id
+
+                _record_flag_as_graph_insight(flag)
 
                 log_color(f"🎉 [FLAG FOUND] {flag}", Colors.GREEN, thread_id, bold=True)
 
@@ -862,3 +929,126 @@ def get_tools() -> list:
 
 # 为了向后兼容，保留 TOOLS 变量（但建议使用 get_tools()）
 TOOLS = _BASE_TOOLS
+
+
+# ======================================================================
+# 图模式（Insight-Mission 图探索）专用工具与全局状态
+# ======================================================================
+# 这些工具不加入 _BASE_TOOLS，只在图模式下由 GraphSolver 通过
+# run_single_llm(extra_tools=...) 动态注入，不会污染普通模式。
+
+# 全局状态：图模式结构化结果，按线程 ID 隔离。
+_graph_results: dict[int, dict] = {}
+
+
+def clear_graph_result(thread_id: int | None = None) -> None:
+    """清除图模式结果全局状态"""
+    tid = _get_thread_id_from_context() if thread_id is None else thread_id
+    _graph_results.pop(tid, None)
+
+
+def is_result_submitted(thread_id: int | None = None) -> bool:
+    """检查图模式下 LLM 是否已通过 tool 提交结果"""
+    tid = _get_thread_id_from_context() if thread_id is None else thread_id
+    return tid in _graph_results
+
+
+def get_graph_result(thread_id: int | None = None) -> dict | None:
+    """获取图模式下 LLM 提交的结构化结果"""
+    tid = _get_thread_id_from_context() if thread_id is None else thread_id
+    return _graph_results.get(tid)
+
+
+class ResultSubmittedException(Exception):
+    """
+    图模式下 LLM 通过 tool 提交结构化结果时抛出，用于中断 agent 执行。
+
+    复用 submit_flag 抛 FlagFoundException 中断 agent 的同一套机制：
+    run_single_llm 在事件循环中检测到 is_result_submitted() 即可收尾返回。
+    """
+
+    def __init__(self, result_type: str, payload: dict):
+        self.result_type = result_type
+        self.payload = payload
+        super().__init__(f"Graph result submitted: {result_type}")
+
+
+def _set_graph_result(result_type: str, payload: dict) -> None:
+    tid = _get_thread_id_from_context()
+    result = {"type": result_type, **payload}
+    _graph_results[tid] = result
+    return result
+
+
+@tool
+def submit_insight(description: str) -> str:
+    """提交本轮探索确认的关键结论或重大发现。"""
+    result = _set_graph_result("insight", {"description": description})
+    raise ResultSubmittedException("insight", result)
+
+
+submit_insight.description = TOOL_SUBMIT_INSIGHT_DESCRIPTION
+
+
+class SubmitMissionItem(BaseModel):
+    """submit_missions 的单个 mission 入参。"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    from_insights: list[str] = Field(
+        alias="from",
+        min_length=1,
+        description="引用图中已有的 insight ID 列表",
+    )
+    description: str = Field(
+        min_length=1,
+        description="独立、清晰的探索任务描述",
+    )
+    priority: int = Field(
+        ge=1,
+        le=10,
+        description="优先级 1-10，10 为最高",
+    )
+
+
+class SubmitMissionsArgs(BaseModel):
+    """submit_missions 的结构化入参。"""
+
+    missions: list[SubmitMissionItem] = Field(
+        min_length=0,
+        description="待探索任务列表。直接传数组，不要传 JSON 字符串。",
+    )
+
+
+@tool(args_schema=SubmitMissionsArgs)
+def submit_missions(missions: list[SubmitMissionItem]) -> str:
+    """提交推导出的新探索方向。"""
+    missions_data = [
+        {
+            "from": item.from_insights,
+            "description": item.description,
+            "priority": item.priority,
+        }
+        for item in missions
+    ]
+
+    result = _set_graph_result("missions", {"missions": missions_data})
+    raise ResultSubmittedException("missions", result)
+
+
+submit_missions.description = TOOL_SUBMIT_MISSIONS_DESCRIPTION
+submit_missions.handle_validation_error = (
+    "Error: missions 参数格式不合法。请重新调用 submit_missions，传入结构化 missions 数组；"
+    "每项必须包含 from(list[str])、description(str)、priority(1-10 int)。不要传 JSON 字符串。"
+)
+
+
+
+def get_graph_tools_for_explore() -> list:
+    """图模式 explore 阶段注入的额外工具"""
+    return [submit_insight]
+
+
+def get_graph_tools_for_reason() -> list:
+    """图模式 reason 阶段注入的额外工具"""
+    return [submit_missions]
