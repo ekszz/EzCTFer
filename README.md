@@ -250,6 +250,7 @@ MAX_ROUNDS=10
 | `MAX_ROUNDS_GRAPH` | 否 | 复用 `MAX_ROUNDS` | 探索图模式思考最大轮数；优先级 `MAX_ROUNDS_GRAPH` > `MAX_ROUNDS` > `10` |
 | `MCP_CONFIG_FILEPATH` | 否 | `./mcp.json` | MCP配置文件路径 |
 | `RAG_DATA_ROOT` | 否 | `./rag` | RAG 模块数据根目录，内部约定使用`data/`、`db/`、`models/`三个子目录 |
+| `SKILLS_SCAN_PATH` | 否 | `./skills` | 额外扫描的 skills 目录（支持相对/绝对路径，相对当前工作目录）；其下每个子目录是一个 skill。未配置时回退扫描当前工作目录下的`skills/`。内置 skills 始终加载；同名 skill 以本目录覆盖内置 |
 | `SINGLE_THREAD_LLM` | 否 | 随机 | 单线程模式固定使用的`LLM_X`序号 |
 | `DUAL_THREAD_0_LLM` | 否 | 随机 | 双线程模式下线程1使用的`LLM_X`序号 |
 | `DUAL_THREAD_1_LLM` | 否 | 随机 | 双线程模式下线程2使用的`LLM_X`序号 |
