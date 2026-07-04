@@ -120,6 +120,12 @@ def scan_skills_directory(skills_dir: str) -> Dict[str, SkillMetadata]:
     return skills
 
 
+# 未配置 SKILLS_SCAN_PATH 时，回退扫描的当前工作目录下的子目录名
+DEFAULT_USER_SKILLS_DIR_NAME = "skills"
+# 环境变量名：额外扫描的用户 skills 目录
+SKILLS_SCAN_PATH_ENV = "SKILLS_SCAN_PATH"
+
+
 # 获取 skills 目录路径
 def get_skills_dir() -> str:
     """
@@ -132,6 +138,95 @@ def get_skills_dir() -> str:
     current_dir = Path(__file__).parent
     skills_dir = current_dir.parent / 'skills'
     return str(skills_dir)
+
+
+def get_user_skills_dirs() -> list[Path]:
+    """
+    获取用户自定义的 skills 目录列表。
+
+    规则：
+    - 配置了 SKILLS_SCAN_PATH：解析该路径本身作为 skills 目录（相对路径相对 cwd）；
+      路径无效（不存在或非目录）则跳过。
+    - 未配置：回退到当前工作目录下的 skills/ 子目录，存在才加入，不存在则跳过。
+
+    Returns:
+        用户 skills 目录列表（0 或 1 个元素）
+    """
+    dirs: list[Path] = []
+    configured = os.getenv(SKILLS_SCAN_PATH_ENV, "").strip()
+    if configured:
+        path = Path(configured)
+        if not path.is_absolute():
+            path = Path.cwd() / path
+        if path.is_dir():
+            dirs.append(path)
+        else:
+            log_debug(f"SKILLS_SCAN_PATH 不是有效目录，跳过: {path}")
+        return dirs
+
+    # 未配置 → 回退 cwd/skills（不存在则静默跳过）
+    default_path = Path.cwd() / DEFAULT_USER_SKILLS_DIR_NAME
+    if default_path.is_dir():
+        dirs.append(default_path)
+    return dirs
+
+
+def get_all_skills_dirs() -> list[Path]:
+    """
+    获取全部待扫描的 skills 目录（内置在前、用户在后）。
+
+    顺序决定覆盖优先级：后扫描的用户目录会覆盖先扫描的同名内置 skill。
+
+    Returns:
+        skills 目录路径列表
+    """
+    return [Path(get_skills_dir())] + get_user_skills_dirs()
+
+
+def scan_all_skills() -> Dict[str, SkillMetadata]:
+    """
+    扫描全部 skills 目录并合并结果。
+
+    内置目录先扫、用户目录后扫；同名 skill 由用户目录覆盖内置，
+    覆盖时打印 log_info 说明来源变更。
+
+    Returns:
+        字典，key 为 skill name，value 为 SkillMetadata
+    """
+    merged: Dict[str, SkillMetadata] = {}
+    builtin_dir = Path(get_skills_dir())
+
+    for skills_dir in get_all_skills_dirs():
+        if not skills_dir.is_dir():
+            continue
+        source_label = "内置" if skills_dir == builtin_dir else "用户"
+        log_info(f"📚 扫描 skills 目录 [{source_label}]: {skills_dir}")
+
+        for entry in os.listdir(skills_dir):
+            skill_path = skills_dir / entry
+            if not skill_path.is_dir():
+                continue
+
+            skill_md_path = skill_path / 'SKILL.md'
+            if not skill_md_path.exists():
+                continue
+
+            metadata = parse_skill_md(str(skill_md_path))
+            if not metadata:
+                continue
+
+            if metadata.name in merged:
+                prev = merged[metadata.name]
+                log_info(
+                    f"  ↻ Skill 覆盖: {metadata.name}  "
+                    f"原来源={prev.skill_path}  新来源={metadata.skill_path} [{source_label}]"
+                )
+            else:
+                log_info(f"  ✓ 加载 skill: {metadata.name} (v{metadata.version}) [{source_label}]")
+
+            merged[metadata.name] = metadata
+
+    return merged
 
 
 # 全局缓存已加载的 skills
@@ -148,8 +243,7 @@ def load_all_skills() -> Dict[str, SkillMetadata]:
     global _loaded_skills
     
     if not _loaded_skills:
-        skills_dir = get_skills_dir()
-        _loaded_skills = scan_skills_directory(skills_dir)
+        _loaded_skills = scan_all_skills()
     
     return _loaded_skills
 
