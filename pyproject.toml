@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ezctfer"
-version = "1.0.5"
+version = "1.1.0"
 description = "基于LangChain的多Agent CTF结队解题框架"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
@@ -27,7 +27,7 @@ dependencies = [
     "idapro==0.0.7",
     "langchain-deepseek>=1.0.1",
     "ida_pro_mcp==1.4.0",
-    "lightrag-hku>=1.4.8",
+    "lightrag-hku==1.4.13",
     "torch",
     "sentence-transformers>=5.2.0",
 ]
