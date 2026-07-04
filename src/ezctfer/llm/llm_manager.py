@@ -9,15 +9,16 @@ from typing import Any
 from dataclasses import dataclass
 import hashlib
 
-import anthropic
 import httpx
 from langchain_core.language_models import BaseChatModel
-from langchain_anthropic import ChatAnthropic
 
 from ..config import LLMConfig, get_config
 from ..config.config_loader import ApiType
-from .chat_deepseek_fixed import ChatDeepSeekFixed
-from .chat_openai_compatible import ChatOpenAICompatible
+
+# 注意：各 provider 客户端（ChatAnthropic / ChatDeepSeekFixed /
+# ChatOpenAICompatible 及 anthropic SDK）改为按需导入，见
+# _create_llm_instance 内对应 api_type 分支——仅加载 .env 实际配置的
+# provider 依赖，避免在启动期一次性加载全部 provider 的重型 SDK。
 
 # 自定义 User-Agent，模拟 Claude CLI
 CLAUDE_USER_AGENT = "claude-cli/2.0.76 (external, sdk-ts)"
@@ -262,6 +263,10 @@ class LLMManager:
         )
         
         if config.api_type == ApiType.ANTHROPIC:
+            # 按需导入：仅当配置了 Anthropic 类型时才加载 langchain_anthropic + anthropic SDK
+            import anthropic
+            from langchain_anthropic import ChatAnthropic
+
             # 使用 ChatAnthropic 客户端
             # Anthropic API 使用 anthropic_api_url 参数设置自定义 URL
             # 注意：langchain-anthropic 不支持直接传递 http_client 参数
@@ -306,6 +311,9 @@ class LLMManager:
                 http_client=async_http_client,
             )
         elif config.api_type == ApiType.DEEPSEEK:
+            # 按需导入：仅当配置了 DeepSeek 类型时才加载 langchain_deepseek（含 openai SDK）
+            from .chat_deepseek_fixed import ChatDeepSeekFixed
+
             # 使用 ChatDeepSeekFixed 客户端（修复版）
             # DeepSeek 推理模型（如 deepseek-reasoner）需要在消息中保留 reasoning_content 字段
             # 官方的 langchain_deepseek 在序列化消息时会丢失 reasoning_content，导致 API 报错
@@ -330,6 +338,9 @@ class LLMManager:
             )
             client = ChatDeepSeekFixed(**client_kwargs)
         elif config.api_type == ApiType.OPENAI:
+            # 按需导入：仅当配置了 OpenAI 类型时才加载 langchain_openai
+            from .chat_openai_compatible import ChatOpenAICompatible
+
             # 默认使用 ChatOpenAI 作为通用的 LLM 客户端
             # 它支持自定义 base_url，可以连接到各种兼容 OpenAI API 的服务
             # Responses 相关能力通过 LLM_X_EXTRA 控制。
