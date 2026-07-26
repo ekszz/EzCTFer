@@ -402,6 +402,18 @@
             border: 1px solid rgba(255, 255, 255, 0.04);
         }
 
+        [data-theme="dark"] .tool-arg-key {
+            color: #ffcc80;
+        }
+
+        [data-theme="dark"] .tool-arg-value {
+            color: #c7c7c7;
+        }
+
+        [data-theme="dark"] .tool-arg-empty {
+            color: #8a8a8a;
+        }
+
         [data-theme="dark"] .tool-result {
             background: rgba(30, 30, 30, 0.6);
             border-top: 1px solid rgba(255, 255, 255, 0.06);
@@ -1636,8 +1648,41 @@
             font-size: 12px;
             overflow-x: auto;
             color: #555;
+            display: grid;
+            grid-template-columns: minmax(44px, 10%) minmax(0, 1fr);
+            column-gap: 8px;
+            row-gap: 7px;
             backdrop-filter: var(--glass-blur-light);
             -webkit-backdrop-filter: var(--glass-blur-light);
+        }
+
+        .tool-arg-row {
+            display: contents;
+        }
+
+        .tool-arg-key {
+            color: #6b7280;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            font-weight: 600;
+            line-height: 1.45;
+            overflow-wrap: anywhere;
+        }
+
+        .tool-arg-value {
+            color: #374151;
+            font-family: var(--font-sans);
+            font-size: 12px;
+            line-height: 1.45;
+            min-width: 0;
+            overflow-wrap: anywhere;
+            white-space: pre-wrap;
+        }
+
+        .tool-arg-empty {
+            grid-column: 1 / -1;
+            color: #888;
+            font-size: 12px;
         }
 
         .tool-result {
@@ -3343,7 +3388,7 @@
         }
 
         function isDarkTheme() {
-            return document.body.getAttribute('data-theme') === 'dark';
+            return document.documentElement.getAttribute('data-theme') === 'dark';
         }
 
         function setUserInputAreaVisible(visible) {
@@ -4295,7 +4340,7 @@
                 html += '<div class="tool-args-section' + (isExpanded ? ' show' : '') + '" id="' + toolId + '-args">';
                 if (toolCall.args) {
                     html += '<div class="tool-label">参数:</div>';
-                    html += '<div class="tool-args">' + escapeHtml(JSON.stringify(toolCall.args, null, 2)) + '</div>';
+                    html += renderToolArgs(toolCall.args);
                 }
                 html += '</div>';
                 html += '</div>';
@@ -4372,6 +4417,55 @@
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        }
+
+        function normalizeToolArgs(args) {
+            if (typeof args !== 'string') return args;
+
+            try {
+                return JSON.parse(args);
+            } catch (e) {
+                return args;
+            }
+        }
+
+        function formatToolArgValue(value) {
+            if (value === null) return 'null';
+            if (value === undefined) return '';
+            if (typeof value === 'string') return value;
+            if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+            return JSON.stringify(value, null, 2);
+        }
+
+        function renderToolArgs(args) {
+            const normalizedArgs = normalizeToolArgs(args);
+            let rows = [];
+
+            if (normalizedArgs && typeof normalizedArgs === 'object' && !Array.isArray(normalizedArgs)) {
+                rows = Object.entries(normalizedArgs);
+            } else if (Array.isArray(normalizedArgs)) {
+                rows = normalizedArgs.map(function(value, index) {
+                    return [String(index), value];
+                });
+            } else {
+                rows = [['value', normalizedArgs]];
+            }
+
+            let html = '<div class="tool-args">';
+
+            if (rows.length === 0) {
+                html += '<div class="tool-arg-empty">无参数</div>';
+            } else {
+                rows.forEach(function(row) {
+                    html += '<div class="tool-arg-row">';
+                    html += '<div class="tool-arg-key">' + escapeHtml(row[0]) + '</div>';
+                    html += '<div class="tool-arg-value">' + escapeHtml(formatToolArgValue(row[1])) + '</div>';
+                    html += '</div>';
+                });
+            }
+
+            html += '</div>';
+            return html;
         }
 
         // 格式化内容（处理代码块等）
@@ -4605,8 +4699,18 @@
 
         // ========== 暗黑模式切换功能 ==========
         
-        // 当前主题
-        let currentTheme = localStorage.getItem('theme') || 'light';
+        // URL 参数 theme 优先级最高：覆盖 localStorage 配置（仅接受 dark/light）
+        const urlTheme = new URLSearchParams(window.location.search).get('theme');
+        if (urlTheme) {
+            const normalized = urlTheme.toLowerCase();
+            if (normalized === 'dark' || normalized === 'light') {
+                localStorage.setItem('theme', normalized);
+            }
+        }
+
+        // 当前主题：优先使用用户上次的选择，否则跟随系统配色
+        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        let currentTheme = localStorage.getItem('theme') || (prefersDark ? 'dark' : 'light');
 
         // 初始化主题
         function initTheme() {
@@ -4640,6 +4744,26 @@
                 btn.textContent = isDark ? '☀️' : '🌙';
                 btn.title = isDark ? '切换亮色模式' : '切换暗黑模式';
             }
+        }
+
+        // 应用主题到 DOM（仅切换属性，不写 localStorage）
+        function applyThemeToDom(dark) {
+            if (dark) {
+                document.documentElement.setAttribute('data-theme', 'dark');
+            } else {
+                document.documentElement.removeAttribute('data-theme');
+            }
+            updateThemeButton(dark);
+            currentTheme = dark ? 'dark' : 'light';
+        }
+
+        // 用户未手动选择时，实时跟随系统配色切换
+        if (window.matchMedia) {
+            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function (e) {
+                if (!localStorage.getItem('theme')) {
+                    applyThemeToDom(e.matches);
+                }
+            });
         }
 
         // 页面加载时初始化主题
