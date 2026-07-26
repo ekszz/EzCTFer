@@ -88,6 +88,8 @@
 
 启动方式：`uv run ezctfer --graph`（与 `--dual-thread` 互斥）。图模式把解题过程建模成一张**有向图**，由两个专职角色协作，按"图扩展逐步探索"的方式向前推进。
 
+![GRAPH_EXAMPLE](img/graph_example.png)
+
 #### 设计思想：图扩展逐步探索
 
 - **节点 = 已有发现**，**边 = 探索方向**。整张图从唯一的 `ROOT`（题目描述）出发，按 `发现─>探索─>新发现` 的方式**增量生长**。
@@ -130,18 +132,18 @@
               +------------[ M-002 (p:5) 路径扫描 ]--> (pending)  待领取
               v
         +-----------+
-        |   M-001   |   "登录页在 /login"
+        |   I-001   |   "登录页在 /login"
         +-----+-----+
               |  M-003 (p:8)  注入测试
               +-------[ M-005 (p:4) ]--> (exploring)  某 Explorer 正在走
               v
         +-----------+
-        |   M-003   |   "登录接口存在 SQL 注入"   ← concluded
+        |   I-002   |   "登录接口存在 SQL 注入"   ← concluded
         +-----+-----+
               |  M-004 (p:9)  利用注入读数据
               v
         +-----------+
-        |   M-006   |   "flag{...}"   --> submit_flag  ✅
+        |   I-003   |   "flag{...}"   --> submit_flag  ✅
         +-----------+
 ```
 
@@ -251,9 +253,9 @@ MAX_ROUNDS=10
 | `MCP_CONFIG_FILEPATH` | 否 | `./mcp.json` | MCP配置文件路径 |
 | `RAG_DATA_ROOT` | 否 | `./rag` | RAG 模块数据根目录，内部约定使用`data/`、`db/`、`models/`三个子目录 |
 | `SKILLS_SCAN_PATH` | 否 | `./skills` | 额外扫描的 skills 目录（支持相对/绝对路径，相对当前工作目录）；其下每个子目录是一个 skill。未配置时回退扫描当前工作目录下的`skills/`。内置 skills 始终加载；同名 skill 以本目录覆盖内置 |
-| `SINGLE_THREAD_LLM` | 否 | 随机 | 单线程模式固定使用的`LLM_X`序号 |
-| `DUAL_THREAD_0_LLM` | 否 | 随机 | 双线程模式下线程1使用的`LLM_X`序号 |
-| `DUAL_THREAD_1_LLM` | 否 | 随机 | 双线程模式下线程2使用的`LLM_X`序号 |
+| `SINGLE_THREAD_LLM` | 否 | 随机 | 单线程模式固定使用的`LLM_X`序号/探索图模式下Reasoner使用的`LLM_X`序号 |
+| `DUAL_THREAD_0_LLM` | 否 | 随机 | 双线程模式下线程1使用的`LLM_X`序号/探索图模式下Explorer1使用的`LLM_X`序号 |
+| `DUAL_THREAD_1_LLM` | 否 | 随机 | 双线程模式下线程2使用的`LLM_X`序号/探索图模式下Explorer2使用的`LLM_X`序号 |
 
 ### RAG目录约定
 
@@ -297,6 +299,9 @@ uv run ezctfer --prompt "分析这个Web题并尝试拿到flag，靶机地址是
 # 启用双线程结队模式
 uv run ezctfer --dual-thread
 
+# 启用探索图解题模式
+uv run ezctfer --graph
+
 # 初始化RAG知识库
 uv run ezctfer --init-rag
 
@@ -333,6 +338,7 @@ uv run ezctfer --rag --dual-thread --quiet --jadx
 | `--rag` | 启用本地RAG检索工具，并向Agent注入`retrieve_knowledge`工具 |
 | `--init-rag` | 忽略其它参数，仅执行知识库初始化 |
 | `--dual-thread` | 启用双线程并行解题，并基于情报共享协同推进 |
+| `--graph` | 启用探索图模式解题，与`--dual-thread`互斥 |
 | `--debug` | 输出debug级别日志 |
 | `--prompt TEXT` | 直接传入题目描述，跳过交互式多行输入 |
 | `--quiet` | 找到flag时自动确认；程序结束后等待10秒自动退出 |
